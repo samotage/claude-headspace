@@ -45,7 +45,6 @@
     var _kebabBtn = null;
     var _kebabMenu = null;
     var _kebabComplete = null;
-    var _kebabEnd = null;
     var _kebabOpen = false;
 
     function _getElements() {
@@ -70,7 +69,7 @@
         _kebabBtn = document.getElementById('channel-chat-kebab-btn');
         _kebabMenu = document.getElementById('channel-chat-kebab-menu');
         _kebabComplete = document.getElementById('channel-chat-kebab-complete');
-        _kebabEnd = document.getElementById('channel-chat-kebab-end');
+
 
         // Wire kebab menu items via event delegation
         if (_kebabMenu) {
@@ -153,7 +152,7 @@
 
         // Hide chair controls in kebab
         if (_kebabComplete) _kebabComplete.classList.add('hidden');
-        if (_kebabEnd) _kebabEnd.classList.add('hidden');
+
 
         document.removeEventListener('keydown', _handleEscape);
     }
@@ -234,9 +233,6 @@
                 break;
             case 'complete':
                 completeChannel();
-                break;
-            case 'end':
-                endChannel();
                 break;
             case 'copy-slug':
                 _copySlug();
@@ -450,41 +446,6 @@
         });
     }
 
-    /**
-     * End/archive the channel (chair action) with confirmation.
-     */
-    function endChannel() {
-        if (!_activeChannelSlug) return;
-        var slug = _activeChannelSlug;
-        if (typeof ConfirmDialog === 'undefined') return;
-
-        ConfirmDialog.show('Archive Channel', 'Archive this channel? This cannot be undone.', {
-            confirmText: 'Archive',
-            confirmClass: 'bg-red hover:bg-red/90',
-        }).then(function(ok) {
-            if (!ok) return;
-            fetch('/api/channels/' + encodeURIComponent(slug) + '/archive', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-            })
-            .then(function(r) {
-                if (!r.ok) {
-                    return r.json().then(function(data) {
-                        throw new Error((data.error && data.error.message) || 'HTTP ' + r.status);
-                    });
-                }
-                return r.json();
-            })
-            .then(function() {
-                if (global.Toast) global.Toast.success('Channel archived');
-                close();
-            })
-            .catch(function(err) {
-                console.error('Failed to archive channel:', err);
-                if (global.Toast) global.Toast.error('Error', err.message || 'Failed to archive channel');
-            });
-        });
-    }
 
     /**
      * Send a message to the active channel.
@@ -737,7 +698,6 @@
                 // backend enforces actual permissions
                 var hasChair = membersList.some(function(m) { return m.is_chair; });
                 if (_kebabComplete) _kebabComplete.classList.toggle('hidden', !hasChair);
-                if (_kebabEnd) _kebabEnd.classList.toggle('hidden', !hasChair);
             })
             .catch(function(err) {
                 console.error('Failed to load members for pills:', err);
@@ -988,7 +948,6 @@
         toggleAddMember: toggleAddMember,
         toggleKebab: toggleKebab,
         completeChannel: completeChannel,
-        endChannel: endChannel,
         leaveChannel: leaveChannel,
         get _activeChannelSlug() { return _activeChannelSlug; },
     };

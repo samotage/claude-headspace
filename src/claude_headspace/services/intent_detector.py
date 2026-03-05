@@ -565,11 +565,16 @@ def detect_agent_intent(
     continuation_window = _extract_tail(cleaned, max_lines=5)
     has_continuation = bool(_match_patterns(continuation_window, CONTINUATION_PATTERNS))
 
+    logger.info(
+        f"[INTENT_FORENSIC] tail(last15)={repr(tail[-200:])}, "
+        f"has_continuation={has_continuation}"
+    )
+
     # Phase 0: End-of-command detection on tail (before QUESTION — catches soft-close offers)
     eot_result = _detect_end_of_command(tail, has_continuation)
     if eot_result:
-        logger.debug(
-            f"Detected END_OF_COMMAND intent in tail: pattern={eot_result.matched_pattern}"
+        logger.info(
+            f"[INTENT_FORENSIC] Phase0 END_OF_COMMAND: pattern={eot_result.matched_pattern}"
         )
         return eot_result
 
@@ -578,8 +583,9 @@ def detect_agent_intent(
     # matching earlier in the full tail.
     trailing_q = _detect_trailing_question(tail, has_continuation)
     if trailing_q:
-        logger.debug(
-            f"Detected trailing QUESTION in tail: pattern={trailing_q.matched_pattern}"
+        logger.info(
+            f"[INTENT_FORENSIC] Phase0.5 TRAILING_QUESTION: "
+            f"pattern={trailing_q.matched_pattern}"
         )
         return trailing_q
 
@@ -605,7 +611,9 @@ def detect_agent_intent(
     for patterns, intent in phase1_order:
         matched = _match_patterns(tail, patterns)
         if matched:
-            logger.debug(f"Detected {intent.value} intent in tail: pattern={matched}")
+            logger.info(
+                f"[INTENT_FORENSIC] Phase1 {intent.value}: pattern={matched}"
+            )
             return IntentResult(
                 intent=intent,
                 confidence=1.0,
@@ -648,8 +656,8 @@ def detect_agent_intent(
     for patterns, intent in phase3_order:
         matched = _match_patterns(cleaned, patterns)
         if matched:
-            logger.debug(
-                f"Detected {intent.value} intent in full text: pattern={matched}"
+            logger.info(
+                f"[INTENT_FORENSIC] Phase3 {intent.value}: pattern={matched}"
             )
             return IntentResult(
                 intent=intent,
@@ -667,7 +675,7 @@ def detect_agent_intent(
             return inferred
 
     # Default to progress with lower confidence since no pattern matched
-    logger.info("No pattern matched, defaulting to PROGRESS")
+    logger.info("[INTENT_FORENSIC] No pattern matched, defaulting to PROGRESS")
     return IntentResult(
         intent=TurnIntent.PROGRESS,
         confidence=0.5,

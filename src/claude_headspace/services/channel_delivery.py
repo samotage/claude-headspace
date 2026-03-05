@@ -62,6 +62,10 @@ class ChannelDeliveryService:
         # In-memory delivery queue: agent_id -> deque of Message IDs
         self._queue: dict[int, deque[int]] = {}
         self._queue_lock = threading.Lock()
+        # Track which agents were last prompted by a channel message delivery.
+        # Only agents in this set should have their completions relayed back
+        # into the channel. Prevents DM responses from leaking into channels.
+        self._channel_prompted: set[int] = set()
         self._max_queue_depth = (
             app.config.get("APP_CONFIG", {})
             .get("channels", {})
@@ -194,6 +198,7 @@ class ChannelDeliveryService:
         with self._queue_lock:
             q = self._queue.pop(agent_id, None)
             count = len(q) if q else 0
+        self._channel_prompted.discard(agent_id)
         if count:
             logger.info(f"Cleared {count} queued message(s) for agent {agent_id}")
         return count
@@ -277,6 +282,13 @@ class ChannelDeliveryService:
             channel_id=channel.id, status="active"
         ).all()
 
+        logger.info(
+            f"[DELIVERY_FORENSIC] deliver_message: channel=#{channel.slug}, "
+            f"sender_persona={message.persona_id}, sender_agent={message.agent_id}, "
+            f"total_memberships={len(memberships)}, "
+            f"member_ids=[{', '.join(f'p{m.persona_id}/a{m.agent_id}' for m in memberships)}]"
+        )
+
         for membership in memberships:
             # Skip the sender
             if message.persona_id and membership.persona_id == message.persona_id:
@@ -317,13 +329,36 @@ class ChannelDeliveryService:
         """
         agent = membership.agent
 
-        # No agent linked — offline persona, defer
+        # No agent linked or agent ended — try to self-heal by finding a
+        # live agent for the same persona (handles new sessions replacing old).
         if agent is None or agent.ended_at is not None:
-            logger.debug(
-                f"Deferred delivery for persona {membership.persona_id} "
-                f"(no active agent)"
+            live_agent = (
+                Agent.query.filter_by(
+                    persona_id=membership.persona_id,
+                )
+                .filter(Agent.ended_at.is_(None))
+                .order_by(Agent.id.desc())
+                .first()
             )
-            return
+            if live_agent and live_agent.tmux_pane_id:
+                try:
+                    membership.agent_id = live_agent.id
+                    db.session.commit()
+                    agent = live_agent
+                    logger.info(
+                        f"Self-healed channel membership {membership.id}: "
+                        f"agent_id updated to {agent.id} (inbound delivery)"
+                    )
+                except Exception:
+                    db.session.rollback()
+                    agent = None
+
+            if agent is None or agent.ended_at is not None:
+                logger.debug(
+                    f"Deferred delivery for persona {membership.persona_id} "
+                    f"(no active agent)"
+                )
+                return
 
         # Agent exists — check if it's an internal agent with tmux
         if not agent.tmux_pane_id:
@@ -336,18 +371,42 @@ class ChannelDeliveryService:
 
         # Internal agent with tmux — check state safety
         if not self._is_safe_state(agent):
-            # Queue for later delivery
+            # Queue for later delivery — but still mark as channel-prompted
+            # so the agent's completion response gets relayed back to the
+            # channel. The agent was prompted by a channel conversation even
+            # if the message delivery is deferred.
+            current_cmd = agent.get_current_command()
+            cmd_state = current_cmd.state.value if current_cmd else "NO_CMD"
             self._enqueue(agent.id, message.id)
+            self._channel_prompted.add(agent.id)
             logger.info(
-                f"Queued message {message.id} for agent {agent.id} (unsafe state)"
+                f"[DELIVERY_FORENSIC] QUEUED message {message.id} for agent "
+                f"{agent.id} (unsafe state={cmd_state}, persona_id={agent.persona_id}), "
+                f"channel_prompted set={sorted(self._channel_prompted)}"
             )
             return
 
         # Safe state — deliver immediately
+        logger.info(
+            f"[DELIVERY_FORENSIC] Attempting tmux delivery to agent {agent.id} "
+            f"(persona_id={agent.persona_id}, pane={agent.tmux_pane_id})"
+        )
         delivered = self._deliver_to_agent(agent, envelope)
-        if not delivered:
+        if delivered:
+            # Mark agent as channel-prompted so relay_agent_response knows
+            # the next completion is a channel response, not a DM response.
+            self._channel_prompted.add(agent.id)
+            logger.info(
+                f"[DELIVERY_FORENSIC] agent {agent.id} added to _channel_prompted "
+                f"(set now={sorted(self._channel_prompted)})"
+            )
+        else:
             # Delivery failed — queue for retry on next state transition
             self._enqueue(agent.id, message.id)
+            logger.info(
+                f"[DELIVERY_FORENSIC] tmux delivery FAILED for agent {agent.id}, "
+                f"queued message {message.id}"
+            )
 
     def _notify_operator_if_applicable(
         self,
@@ -412,46 +471,80 @@ class ChannelDeliveryService:
         Returns:
             True if the response was posted as a channel Message, False otherwise.
         """
-        # FR9: completion-only relay
-        if turn_intent not in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
-            return False
+        logger.info(
+            f"[RELAY_FORENSIC] relay_agent_response ENTRY: "
+            f"agent_id={agent.id}, persona_id={agent.persona_id}, "
+            f"intent={turn_intent.value}, turn_id={turn_id}, "
+            f"command_id={command_id}, "
+            f"channel_prompted_set={sorted(self._channel_prompted)}, "
+            f"text_len={len(turn_text) if turn_text else 0}"
+        )
+
+        # FR9: completion-only relay — BUT channel-prompted agents get a wider
+        # gate because channel conversations naturally contain question marks
+        # (e.g. "Should we use approach A or B?") that the IntentDetector
+        # classifies as QUESTION.  These are still valid channel responses.
+        # Only PROGRESS is filtered out for channel-prompted agents.
+        is_channel_prompted = agent.id in self._channel_prompted
+        if is_channel_prompted:
+            if turn_intent == TurnIntent.PROGRESS:
+                logger.info(
+                    f"[RELAY_FORENSIC] SKIP: intent=progress for "
+                    f"channel-prompted agent={agent.id}"
+                )
+                return False
+        else:
+            if turn_intent not in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
+                logger.info(
+                    f"[RELAY_FORENSIC] SKIP: intent={turn_intent.value} "
+                    f"not COMPLETION/END_OF_COMMAND (agent={agent.id})"
+                )
+                return False
 
         if not agent.persona_id:
-            logger.debug(f"Agent {agent.id} has no persona — skipping channel relay")
+            logger.info(
+                f"[RELAY_FORENSIC] SKIP: no persona_id (agent={agent.id})"
+            )
             return False
 
-        # Look up the agent's active channel membership
+        # Only relay if this agent was prompted by a channel message delivery.
+        # Without this check, DM/direct conversations with a channel member
+        # would leak into the channel (every completion gets relayed).
+        if agent.id not in self._channel_prompted:
+            logger.info(
+                f"[RELAY_FORENSIC] SKIP: agent {agent.id} NOT in "
+                f"_channel_prompted={sorted(self._channel_prompted)} — "
+                f"likely a direct/DM conversation"
+            )
+            return False
+        # Consume the flag — one delivery, one relay
+        self._channel_prompted.discard(agent.id)
+        logger.info(
+            f"[RELAY_FORENSIC] PASSED channel_prompted gate: agent={agent.id}, "
+            f"remaining_prompted={sorted(self._channel_prompted)}"
+        )
+
+        # Look up the agent's active channel membership (by agent_id only).
+        # No persona fallback here — self-heal belongs on the inbound delivery
+        # path (deliver_message), not on the outbound relay path.  A new agent
+        # for the same persona should NOT be auto-enrolled into old channels
+        # just because it completed a turn.
         membership = ChannelMembership.query.filter_by(
             agent_id=agent.id, status="active"
         ).first()
 
-        # Fallback: if agent_id doesn't match (stale after handoff/new session),
-        # try by persona_id and self-heal the agent_id (Finding F10 defense in depth).
-        # agent.persona_id is guaranteed truthy here (checked above).
         if not membership:
-            membership = ChannelMembership.query.filter_by(
-                persona_id=agent.persona_id, status="active"
-            ).first()
-            if membership:
-                try:
-                    membership.agent_id = agent.id
-                    db.session.commit()
-                    logger.info(
-                        f"Self-healed channel membership {membership.id}: "
-                        f"agent_id updated to {agent.id} (persona fallback)"
-                    )
-                except Exception as e:
-                    db.session.rollback()
-                    logger.warning(
-                        f"Self-heal commit failed for membership {membership.id}: {e}"
-                    )
-                    # Re-query after rollback to avoid DetachedInstanceError
-                    membership = ChannelMembership.query.filter_by(
-                        persona_id=agent.persona_id, status="active"
-                    ).first()
-
-        if not membership:
+            logger.info(
+                f"[RELAY_FORENSIC] SKIP: no active membership for agent_id={agent.id} "
+                f"(persona_id={agent.persona_id})"
+            )
             return False
+
+        logger.info(
+            f"[RELAY_FORENSIC] Found membership: agent={agent.id}, "
+            f"channel=#{membership.channel.slug if membership.channel else '?'}, "
+            f"membership_id={membership.id}"
+        )
 
         channel = membership.channel
         if channel.status not in ("active", "pending"):
@@ -468,9 +561,9 @@ class ChannelDeliveryService:
                 channel_id=channel.id, source_turn_id=turn_id
             ).first()
             if existing:
-                logger.debug(
-                    f"Agent {agent.id} turn {turn_id} already relayed to "
-                    f"channel #{channel.slug} — skipping duplicate"
+                logger.info(
+                    f"[RELAY_FORENSIC] SKIP DEDUP: agent {agent.id} turn {turn_id} "
+                    f"already relayed to #{channel.slug} (msg_id={existing.id})"
                 )
                 return False
 
@@ -578,7 +671,9 @@ class ChannelDeliveryService:
             return False
 
         delivered = self._deliver_to_agent(agent, envelope)
-        if not delivered:
+        if delivered:
+            self._channel_prompted.add(agent.id)
+        else:
             # Re-queue if delivery failed (front of queue for FIFO)
             with self._queue_lock:
                 if agent.id not in self._queue:

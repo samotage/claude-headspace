@@ -542,10 +542,14 @@ def _apply_recovered_turn_lifecycle(agent, command, turn, intent_result):
         except Exception:
             logger.debug("Card refresh broadcast failed during reconciliation")
 
-        # Channel relay: if this is a COMPLETION/END_OF_COMMAND turn for an agent
-        # with a persona, relay the response into any active channel (Finding F9).
-        # This makes the reconciler the reliable backbone for channel message relay.
-        if turn.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
+        # Channel relay: relay agent responses into active channels.
+        # relay_agent_response handles intent filtering internally —
+        # channel-prompted agents relay all intents except PROGRESS.
+        if turn.intent in (
+            TurnIntent.COMPLETION,
+            TurnIntent.END_OF_COMMAND,
+            TurnIntent.QUESTION,
+        ):
             try:
                 ch_delivery = current_app.extensions.get("channel_delivery_service")
                 if ch_delivery and agent.persona_id:
@@ -561,6 +565,14 @@ def _apply_recovered_turn_lifecycle(agent, command, turn, intent_result):
                             f"[RECONCILER] Relayed turn {turn.id} to channel "
                             f"(agent={agent.id})"
                         )
+                    # Drain queued messages now that agent has completed
+                    if command.state == CommandState.COMPLETE:
+                        try:
+                            ch_delivery.drain_queue(agent)
+                        except Exception as qd_err:
+                            logger.warning(
+                                f"[RECONCILER] Channel queue drain failed: {qd_err}"
+                            )
             except Exception as e:
                 logger.warning(
                     f"[RECONCILER] Channel relay failed for turn {turn.id}: {e}"
@@ -575,7 +587,11 @@ def _apply_recovered_turn_lifecycle(agent, command, turn, intent_result):
         # hook_receiver already completed the command, but hook relay may have
         # missed due to stale membership. The dedup check in relay_agent_response
         # prevents duplicate messages.
-        if turn.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
+        if turn.intent in (
+            TurnIntent.COMPLETION,
+            TurnIntent.END_OF_COMMAND,
+            TurnIntent.QUESTION,
+        ):
             try:
                 ch_delivery = current_app.extensions.get("channel_delivery_service")
                 if ch_delivery and agent.persona_id:
@@ -586,6 +602,15 @@ def _apply_recovered_turn_lifecycle(agent, command, turn, intent_result):
                         turn_id=turn.id,
                         command_id=command.id,
                     )
+                    # Command may already be COMPLETE (why transition failed),
+                    # so drain is appropriate here.
+                    if command.state == CommandState.COMPLETE:
+                        try:
+                            ch_delivery.drain_queue(agent)
+                        except Exception as qd_err:
+                            logger.debug(
+                                f"[RECONCILER] Queue drain after failed transition: {qd_err}"
+                            )
             except Exception as relay_err:
                 logger.debug(
                     f"[RECONCILER] Channel relay after failed transition: {relay_err}"

@@ -192,6 +192,13 @@ def _run_deferred_stop_locked(
         broadcast_card_refresh(agent_obj, "stop_deferred")
         _execute_pending_summarisations(pending)
         _send_completion_notification(agent_obj, cmd)
+        # Channel queue drain: deliver oldest queued message now that agent is idle.
+        try:
+            ch_delivery = app.extensions.get("channel_delivery_service")
+            if ch_delivery:
+                ch_delivery.drain_queue(agent_obj)
+        except Exception as qd_err:
+            logger.warning(f"Channel queue drain failed (non-fatal): {qd_err}")
         logger.info(f"deferred_stop: agent_id={agent_id}, completed (empty transcript)")
         return
 
@@ -382,6 +389,49 @@ def _run_deferred_stop_locked(
 
     if cmd.state == CommandState.COMPLETE:
         _send_completion_notification(agent_obj, cmd)
+
+    # Channel delivery: relay agent response and drain queued messages.
+    # Mirrors the pattern from hook_receiver.py process_stop.
+    try:
+        ch_delivery = app.extensions.get("channel_delivery_service")
+    except Exception:
+        ch_delivery = None
+
+    logger.info(
+        f"[RELAY_FORENSIC] deferred_stop channel relay check: "
+        f"agent_id={agent_id}, intent={intent_result.intent.value}, "
+        f"ch_delivery={'yes' if ch_delivery else 'no'}, "
+        f"cmd_state={cmd.state.value}"
+    )
+
+    if ch_delivery and intent_result.intent != TurnIntent.PROGRESS:
+        try:
+            relay_turn_id = None
+            if cmd.turns:
+                for t in reversed(cmd.turns):
+                    if t.actor == TurnActor.AGENT and t.intent in (
+                        TurnIntent.COMPLETION,
+                        TurnIntent.END_OF_COMMAND,
+                        TurnIntent.QUESTION,
+                    ):
+                        relay_turn_id = t.id
+                        break
+            ch_delivery.relay_agent_response(
+                agent=agent_obj,
+                turn_text=completion_text or full_agent_text or "",
+                turn_intent=intent_result.intent,
+                turn_id=relay_turn_id,
+                command_id=cmd.id,
+            )
+        except Exception as ch_err:
+            logger.warning(f"Channel relay failed (non-fatal): {ch_err}")
+
+    if ch_delivery and cmd.state == CommandState.COMPLETE:
+        try:
+            ch_delivery.drain_queue(agent_obj)
+        except Exception as qd_err:
+            logger.warning(f"Channel queue drain failed (non-fatal): {qd_err}")
+
     # Broadcast agent turn for all intent types (voice chat needs this)
     if cmd.turns:
         broadcast_turn = None

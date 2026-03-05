@@ -1545,6 +1545,10 @@ def process_stop(
         if not agent_text:
             # Defer transcript extraction: complete the request now and
             # schedule a background re-check after a short delay.
+            logger.info(
+                f"[RELAY_FORENSIC] process_stop DEFERRED: agent_id={agent.id}, "
+                f"transcript empty — relay will happen in deferred_stop"
+            )
             _schedule_deferred_stop(agent, current_command)
             db.session.commit()
             broadcast_card_refresh(agent, "stop")
@@ -1849,21 +1853,27 @@ def process_stop(
         except Exception:
             ch_delivery = None
 
-        # Channel relay: if this agent is in an active channel and the turn
-        # is a COMPLETION or END_OF_COMMAND, relay the response as a channel
-        # Message to fan out to other members (FR7-FR10).
-        if ch_delivery and intent_result.intent in (
-            TurnIntent.COMPLETION,
-            TurnIntent.END_OF_COMMAND,
-        ):
+        logger.info(
+            f"[RELAY_FORENSIC] process_stop channel relay check: "
+            f"agent_id={agent.id}, intent={intent_result.intent.value}, "
+            f"ch_delivery={'yes' if ch_delivery else 'no'}, "
+            f"cmd_state={current_command.state.value}"
+        )
+
+        # Channel relay: relay agent responses to the channel.
+        # relay_agent_response handles intent filtering internally —
+        # channel-prompted agents relay all intents except PROGRESS,
+        # non-channel-prompted agents relay only COMPLETION/END_OF_COMMAND.
+        if ch_delivery and intent_result.intent != TurnIntent.PROGRESS:
             try:
-                # Find the turn that was just committed for source tracking
+                # Find the most recent agent turn for source tracking
                 relay_turn_id = None
                 if current_command.turns:
                     for t in reversed(current_command.turns):
                         if t.actor == TurnActor.AGENT and t.intent in (
                             TurnIntent.COMPLETION,
                             TurnIntent.END_OF_COMMAND,
+                            TurnIntent.QUESTION,
                         ):
                             relay_turn_id = t.id
                             break
