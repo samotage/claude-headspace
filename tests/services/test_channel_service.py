@@ -20,10 +20,12 @@ from claude_headspace.services.channel_service import (
     AgentNotFoundError,
     AlreadyMemberError,
     ChannelClosedError,
+    ChannelDeletePreconditionError,
     ChannelNotFoundError,
     NoCreationCapabilityError,
     NotAMemberError,
     NotChairError,
+    SoleChairError,
 )
 
 
@@ -563,7 +565,7 @@ class TestSSEBroadcasting:
     def test_broadcast_update(self, app, channel_service, setup_data):
         mock_broadcaster = MagicMock()
         app.extensions["broadcaster"] = mock_broadcaster
-        ch = channel_service.create_channel(
+        channel_service.create_channel(
             creator_persona=setup_data["persona_a"],
             name="sse-update-test",
             channel_type="workshop",
@@ -924,3 +926,107 @@ class TestJoinChannel:
         ).all()
         join_msgs = [m for m in messages if "Bob joined" in m.content]
         assert len(join_msgs) == 1
+
+
+# ──────────────────────────────────────────────────────────────
+# Delete Channel Tests
+# ──────────────────────────────────────────────────────────────
+
+
+class TestDeleteChannel:
+    """Test ChannelService.delete_channel."""
+
+    def test_delete_archived_channel(self, channel_service, setup_data):
+        """Archived channel can be deleted."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="to-delete",
+            channel_type="workshop",
+        )
+        channel_service.complete_channel(ch.slug, setup_data["persona_a"])
+        channel_service.archive_channel(ch.slug, setup_data["persona_a"])
+        channel_service.delete_channel(ch.slug, setup_data["persona_a"])
+
+        # Verify deleted
+        from claude_headspace.models.channel import Channel
+
+        assert Channel.query.filter_by(slug=ch.slug).first() is None
+
+    def test_delete_active_with_members_raises(self, channel_service, setup_data):
+        """Active channel with members cannot be deleted."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="active-channel",
+            channel_type="workshop",
+        )
+        with pytest.raises(ChannelDeletePreconditionError):
+            channel_service.delete_channel(ch.slug, setup_data["persona_a"])
+
+    def test_delete_not_found_raises(self, channel_service, setup_data):
+        """Non-existent channel raises ChannelNotFoundError."""
+        with pytest.raises(ChannelNotFoundError):
+            channel_service.delete_channel("nonexistent", setup_data["persona_a"])
+
+
+# ──────────────────────────────────────────────────────────────
+# Remove Member Tests
+# ──────────────────────────────────────────────────────────────
+
+
+class TestRemoveMember:
+    """Test ChannelService.remove_member."""
+
+    def test_remove_member_success(self, channel_service, setup_data):
+        """Chair can remove a non-chair member."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="remove-test",
+            channel_type="workshop",
+            member_slugs=[setup_data["persona_b"].slug],
+        )
+        channel_service.remove_member(
+            ch.slug, setup_data["persona_b"].slug, setup_data["persona_a"]
+        )
+        # Verify member is now "left"
+        membership = ChannelMembership.query.filter_by(
+            channel_id=ch.id, persona_id=setup_data["persona_b"].id
+        ).first()
+        assert membership.status == "left"
+
+    def test_remove_sole_chair_raises(self, channel_service, setup_data):
+        """Cannot remove the sole chair."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="sole-chair-test",
+            channel_type="workshop",
+        )
+        with pytest.raises(SoleChairError):
+            channel_service.remove_member(
+                ch.slug, setup_data["persona_a"].slug, setup_data["persona_a"]
+            )
+
+    def test_remove_non_member_raises(self, channel_service, setup_data):
+        """Cannot remove someone who isn't a member."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="non-member-test",
+            channel_type="workshop",
+        )
+        with pytest.raises(NotAMemberError):
+            channel_service.remove_member(
+                ch.slug, setup_data["persona_b"].slug, setup_data["persona_a"]
+            )
+
+    def test_remove_from_closed_channel_raises(self, channel_service, setup_data):
+        """Cannot remove from a completed channel."""
+        ch = channel_service.create_channel(
+            creator_persona=setup_data["persona_a"],
+            name="closed-remove-test",
+            channel_type="workshop",
+            member_slugs=[setup_data["persona_b"].slug],
+        )
+        channel_service.complete_channel(ch.slug, setup_data["persona_a"])
+        with pytest.raises(ChannelClosedError):
+            channel_service.remove_member(
+                ch.slug, setup_data["persona_b"].slug, setup_data["persona_a"]
+            )

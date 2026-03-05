@@ -10,8 +10,8 @@
 - [x] 2.2 Add `remove_member(slug, persona_slug)` method to ChannelService — remove membership record, broadcast SSE update
 - [x] 2.3 Add `DELETE /api/channels/<slug>` route to `channels_api.py` — thin handler with `_channel_route` decorator, confirmation required client-side
 - [x] 2.4 Add `DELETE /api/channels/<slug>/members/<persona_slug>` route to `channels_api.py` — thin handler delegating to ChannelService
-- [ ] 2.5 Write tests for new delete channel endpoint (success, not-archived error, not-found)
-- [ ] 2.6 Write tests for new remove member endpoint (success, not-a-member error, sole-chair prevention)
+- [x] 2.5 Write tests for new delete channel endpoint (success, not-archived error, not-found)
+- [x] 2.6 Write tests for new remove member endpoint (success, not-a-member error, sole-chair prevention)
 
 ## 3. Page Route & Template (Phase 2b)
 
@@ -43,28 +43,28 @@
 
 - [x] 5.1 Replace "Channel Management" modal button on dashboard with link to `/channels`
 - [x] 5.2 Deprecate `_channel_management.html` partial — remove include or gate behind feature flag
-- [ ] 5.3 Verify channel cards on dashboard remain unaffected (SSE flow unchanged)
+- [x] 5.3 Verify channel cards on dashboard remain unaffected (SSE flow unchanged)
 
 ## 6. Styling (Phase 2e)
 
 - [x] 6.1 Add attention signal CSS (amber pulse animation) to `static/css/src/input.css`
 - [x] 6.2 Ensure all new markup follows dark theme + Tailwind conventions
-- [ ] 6.3 Verify tablet-width (768px+) responsiveness
+- [x] 6.3 Verify tablet-width (768px+) responsiveness
 - [x] 6.4 Rebuild Tailwind: `npx tailwindcss -i static/css/src/input.css -o static/css/main.css`
 
 ## 7. Testing (Phase 3)
 
-- [ ] 7.1 Route tests for `/channels` page serving (200 response, template rendered)
-- [ ] 7.2 Route tests for DELETE channel endpoint
-- [ ] 7.3 Route tests for DELETE member endpoint
-- [ ] 7.4 Service tests for `delete_channel` logic (precondition enforcement)
-- [ ] 7.5 Service tests for `remove_member` logic (sole-chair prevention)
-- [ ] 7.6 Visual verification via Playwright CLI screenshot of `/channels` page
+- [x] 7.1 Route tests for `/channels` page serving (200 response, template rendered)
+- [x] 7.2 Route tests for DELETE channel endpoint
+- [x] 7.3 Route tests for DELETE member endpoint
+- [x] 7.4 Service tests for `delete_channel` logic (precondition enforcement)
+- [x] 7.5 Service tests for `remove_member` logic (sole-chair prevention)
+- [x] 7.6 Visual verification via Playwright CLI screenshot of `/channels` page
 
 ## 8. Final Verification
 
-- [ ] 8.1 All tests passing
+- [x] 8.1 All tests passing
 - [ ] 8.2 No linter errors
-- [ ] 8.3 Tailwind build output verified (custom selectors present)
+- [x] 8.3 Tailwind build output verified (custom selectors present)
 - [ ] 8.4 Manual verification: navigate to /channels, filter, search, expand detail, create, complete, archive, delete
 - [ ] 8.5 Verify SSE updates work (create channel from dashboard, see it appear on /channels)

@@ -611,9 +611,7 @@ def detect_agent_intent(
     for patterns, intent in phase1_order:
         matched = _match_patterns(tail, patterns)
         if matched:
-            logger.info(
-                f"[INTENT_FORENSIC] Phase1 {intent.value}: pattern={matched}"
-            )
+            logger.info(f"[INTENT_FORENSIC] Phase1 {intent.value}: pattern={matched}")
             return IntentResult(
                 intent=intent,
                 confidence=1.0,
@@ -656,9 +654,7 @@ def detect_agent_intent(
     for patterns, intent in phase3_order:
         matched = _match_patterns(cleaned, patterns)
         if matched:
-            logger.info(
-                f"[INTENT_FORENSIC] Phase3 {intent.value}: pattern={matched}"
-            )
+            logger.info(f"[INTENT_FORENSIC] Phase3 {intent.value}: pattern={matched}")
             return IntentResult(
                 intent=intent,
                 confidence=0.8,

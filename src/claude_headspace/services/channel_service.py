@@ -422,18 +422,28 @@ class ChannelService:
             )
 
         channel_slug = channel.slug
+        channel_status = channel.status
         db.session.delete(channel)
         db.session.commit()
 
         logger.info("Deleted channel %s", channel_slug)
 
-        self._broadcast_update(
-            channel,
-            "channel_deleted",
-            {
-                "slug": channel_slug,
-            },
-        )
+        # Broadcast directly — the channel object is detached after delete+commit,
+        # so we cannot pass it to _broadcast_update (which accesses channel.slug/status).
+        try:
+            broadcaster = self.app.extensions.get("broadcaster")
+            if broadcaster:
+                broadcaster.broadcast(
+                    "channel_update",
+                    {
+                        "channel_slug": channel_slug,
+                        "update_type": "channel_deleted",
+                        "status": channel_status,
+                        "slug": channel_slug,
+                    },
+                )
+        except Exception as e:
+            logger.warning(f"SSE broadcast failed for channel delete: {e}")
 
     def remove_member(
         self, slug: str, persona_slug: str, caller_persona: Persona
@@ -465,10 +475,14 @@ class ChannelService:
             raise PersonaNotFoundError(f"Error: Persona '{persona_slug}' not found.")
 
         # Find active membership
-        membership = ChannelMembership.query.filter_by(
-            channel_id=channel.id,
-            persona_id=target_persona.id,
-        ).filter(ChannelMembership.status.in_(("active", "muted"))).first()
+        membership = (
+            ChannelMembership.query.filter_by(
+                channel_id=channel.id,
+                persona_id=target_persona.id,
+            )
+            .filter(ChannelMembership.status.in_(("active", "muted")))
+            .first()
+        )
 
         if not membership:
             raise NotAMemberError(
@@ -478,9 +492,11 @@ class ChannelService:
 
         # Sole chair prevention
         if membership.is_chair:
-            chair_count = ChannelMembership.query.filter_by(
-                channel_id=channel.id, is_chair=True
-            ).filter(ChannelMembership.status.in_(("active", "muted"))).count()
+            chair_count = (
+                ChannelMembership.query.filter_by(channel_id=channel.id, is_chair=True)
+                .filter(ChannelMembership.status.in_(("active", "muted")))
+                .count()
+            )
             if chair_count <= 1:
                 raise SoleChairError(
                     f"Error: Cannot remove '{target_persona.name}' — they are the "

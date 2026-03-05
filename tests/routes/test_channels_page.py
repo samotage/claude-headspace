@@ -1,7 +1,5 @@
 """Tests for the channels admin page route."""
 
-import pytest
-
 
 class TestChannelsPage:
     """Test /channels page serving."""

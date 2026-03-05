@@ -31,6 +31,16 @@
         return div.innerHTML;
     };
 
+    /** Parse fetch response into { ok, data } for consistent error handling. */
+    function _parseResponse(r) {
+        return r.json().then(function(d) { return { ok: r.ok, data: d }; });
+    }
+
+    /** Best-effort last activity timestamp for a channel. */
+    function _lastActivity(ch) {
+        return ch.completed_at || ch.archived_at || ch.created_at;
+    }
+
     // ── Initialization ──────────────────────────────────────────
 
     function init() {
@@ -166,8 +176,7 @@
             html += '<td class="py-3 pr-4 text-center text-secondary">' + (ch.member_count || 0) + '</td>';
 
             // Last activity (use created_at as proxy — full implementation would need message timestamps)
-            var lastActivity = ch.completed_at || ch.archived_at || ch.created_at;
-            html += '<td class="py-3 pr-4 text-muted text-sm">' + _formatDate(lastActivity) + '</td>';
+            html += '<td class="py-3 pr-4 text-muted text-sm">' + _formatDate(_lastActivity(ch)) + '</td>';
 
             // Created
             html += '<td class="py-3 pr-4 text-muted text-sm">' + _formatDate(ch.created_at) + '</td>';
@@ -188,8 +197,7 @@
 
     function _isAttentionNeeded(ch) {
         if (ch.status !== 'active') return false;
-        // Use created_at as last activity proxy
-        var lastTime = ch.completed_at || ch.archived_at || ch.created_at;
+        var lastTime = _lastActivity(ch);
         if (!lastTime) return false;
         var elapsed = Date.now() - new Date(lastTime).getTime();
         return elapsed > ATTENTION_THRESHOLD_MS;
@@ -340,7 +348,7 @@
         if (!ok) return;
 
         fetch('/api/channels/' + encodeURIComponent(slug), { method: 'DELETE' })
-            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(r) { return _parseResponse(r); })
             .then(function(res) {
                 if (res.ok) {
                     if (global.Toast) global.Toast.success('Deleted', 'Channel removed.');
@@ -359,7 +367,7 @@
 
     function _postAction(url, successMsg) {
         fetch(url, { method: 'POST' })
-            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(r) { return _parseResponse(r); })
             .then(function(res) {
                 if (res.ok) {
                     if (global.Toast) global.Toast.success('Success', successMsg);
@@ -476,7 +484,7 @@
         fetch('/api/channels/' + encodeURIComponent(channelSlug) + '/members/' + encodeURIComponent(personaSlug), {
             method: 'DELETE'
         })
-            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(r) { return _parseResponse(r); })
             .then(function(res) {
                 if (res.ok) {
                     if (global.Toast) global.Toast.success('Removed', 'Member removed from channel.');
@@ -565,7 +573,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         })
-            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(r) { return _parseResponse(r); })
             .then(function(res) {
                 if (res.ok) {
                     if (global.Toast) global.Toast.success('Created', 'Channel "' + name.trim() + '" created.');
