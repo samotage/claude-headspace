@@ -76,19 +76,16 @@ window.VoiceLayout = (function () {
   }
 
   function updateMainHeaderVisibility(name) {
-    var chatScreen = document.getElementById('screen-chat');
-    var focusLink = document.getElementById('chat-focus-link');
-    var statePill = document.getElementById('chat-state-pill');
-    var showingChat = chatScreen && chatScreen.classList.contains('active');
-    if (focusLink) focusLink.style.display = showingChat ? '' : 'none';
-    if (statePill) statePill.style.display = showingChat ? '' : 'none';
+    var agentSlot = document.getElementById('header-agent-slot');
+    var channelSlot = document.getElementById('header-channel-slot');
+    var backBtn = document.querySelector('#main-header .chat-back-btn');
 
-    // Hide main header agent back button when channel chat is active (it has its own)
-    var mainHeader = document.getElementById('main-header');
-    if (mainHeader) {
-      var mainBackBtn = mainHeader.querySelector('.chat-back-btn');
-      if (mainBackBtn) mainBackBtn.style.display = (name === 'channel-chat') ? 'none' : '';
-    }
+    var showAgent = (name === 'chat');
+    var showChannel = (name === 'channel-chat');
+
+    if (agentSlot) agentSlot.style.display = showAgent ? 'flex' : 'none';
+    if (channelSlot) channelSlot.style.display = showChannel ? 'flex' : 'none';
+    if (backBtn) backBtn.style.display = (showAgent || showChannel) ? '' : 'none';
   }
 
   function applyScreenVisibility(name) {
