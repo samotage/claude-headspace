@@ -113,6 +113,7 @@ window.VoiceChannelChat = (function () {
     });
 
     VoiceLayout.showScreen('channel-chat');
+    VoiceSidebar.highlightSelectedChannel();
 
     // Restore channel draft
     var channelInput = document.getElementById('channel-chat-input');

@@ -106,10 +106,32 @@ window.VoiceSidebar = (function () {
   // --- Agent highlighting in sidebar ---
 
   function highlightSelectedAgent() {
+    var isSplit = VoiceState.layoutMode === 'split';
     var cards = document.querySelectorAll('.agent-card');
     for (var i = 0; i < cards.length; i++) {
       var id = parseInt(cards[i].getAttribute('data-agent-id'), 10);
-      cards[i].classList.toggle('selected', id === VoiceState.targetAgentId && VoiceState.layoutMode === 'split');
+      cards[i].classList.toggle('selected', id === VoiceState.targetAgentId && isSplit && VoiceState.currentScreen === 'chat');
+    }
+    // Deselect all channel cards when an agent is selected
+    var channelCards = document.querySelectorAll('.channel-card');
+    for (var j = 0; j < channelCards.length; j++) {
+      channelCards[j].classList.remove('selected');
+    }
+  }
+
+  function highlightSelectedChannel() {
+    var isSplit = VoiceState.layoutMode === 'split';
+    var slug = VoiceState.currentChannelSlug;
+    // Deselect all agent cards
+    var agentCards = document.querySelectorAll('.agent-card');
+    for (var i = 0; i < agentCards.length; i++) {
+      agentCards[i].classList.remove('selected');
+    }
+    // Highlight the selected channel card
+    var channelCards = document.querySelectorAll('.channel-card');
+    for (var j = 0; j < channelCards.length; j++) {
+      var cardSlug = channelCards[j].getAttribute('data-channel-slug');
+      channelCards[j].classList.toggle('selected', cardSlug === slug && isSplit);
     }
   }
 
@@ -1118,6 +1140,7 @@ window.VoiceSidebar = (function () {
   return {
     setAgentSelectedHandler: setAgentSelectedHandler,
     highlightSelectedAgent: highlightSelectedAgent,
+    highlightSelectedChannel: highlightSelectedChannel,
     renderAgentList: renderAgentList,
     renderChannelList: renderChannelList,
     closeAllKebabMenus: closeAllKebabMenus,

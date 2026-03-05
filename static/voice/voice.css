@@ -785,6 +785,23 @@ body.layout-split .channel-card {
 body.layout-split .channel-card:hover {
   background: var(--surface);
 }
+/* Selected channel in split mode sidebar */
+.channel-card.selected {
+  background: var(--card-selected-bg);
+  outline: 2px solid var(--card-selected-ring);
+  outline-offset: -2px;
+  box-shadow: var(--card-selected-shadow);
+}
+.channel-card.selected:hover {
+  background: var(--card-selected-bg);
+  outline: 2px solid var(--card-selected-ring);
+  outline-offset: -2px;
+  box-shadow: var(--card-selected-shadow);
+}
+body.layout-split .channel-card.selected,
+body.layout-split .channel-card.selected:hover {
+  background: var(--card-selected-bg);
+}
 
 /* Lightweight voice toast */
 .voice-toast {
