@@ -35,6 +35,19 @@ window.VoiceChatController = (function () {
   // =====================================================================
 
   function showChatScreen(agentId) {
+    // Save channel draft if leaving channel-chat screen
+    if (VoiceState.currentScreen === 'channel-chat' && VoiceState.currentChannelSlug) {
+      var channelInput = document.getElementById('channel-chat-input');
+      if (channelInput) {
+        var channelDraft = channelInput.value;
+        if (channelDraft) {
+          VoiceState.channelDrafts[VoiceState.currentChannelSlug] = channelDraft;
+        } else {
+          delete VoiceState.channelDrafts[VoiceState.currentChannelSlug];
+        }
+      }
+    }
+
     // Save scroll state for the agent we're leaving
     var previousAgentId = VoiceState.targetAgentId;
     if (previousAgentId && previousAgentId !== agentId) {

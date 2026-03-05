@@ -72,6 +72,7 @@ window.VoiceState = (function () {
 
   // ---- Channels ----
   var _channels = [];
+  var _channelDrafts = {};
   var _currentChannelSlug = null;
   var _channelMessages = {};      // keyed by slug, arrays of message objects
   var _channelMembers = [];       // members of current channel
@@ -232,6 +233,8 @@ window.VoiceState = (function () {
     // Channels
     get channels() { return _channels; },
     set channels(v) { _channels = v; },
+    get channelDrafts() { return _channelDrafts; },
+    set channelDrafts(v) { _channelDrafts = v; },
     get currentChannelSlug() { return _currentChannelSlug; },
     set currentChannelSlug(v) { _currentChannelSlug = v; },
     get channelMessages() { return _channelMessages; },

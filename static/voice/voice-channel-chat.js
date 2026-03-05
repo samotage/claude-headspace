@@ -41,6 +41,32 @@ window.VoiceChannelChat = (function () {
   // --- Public methods ---
 
   function showChannelChatScreen(slug) {
+    // Save current agent chat draft before switching
+    var agentInput = document.getElementById('chat-text-input');
+    var currentAgentId = VoiceState.targetAgentId;
+    if (agentInput && currentAgentId) {
+      var agentDraft = agentInput.value;
+      if (agentDraft) {
+        VoiceState.agentDrafts[currentAgentId] = agentDraft;
+      } else {
+        delete VoiceState.agentDrafts[currentAgentId];
+      }
+    }
+
+    // Save current channel draft if switching between channels
+    var previousSlug = VoiceState.currentChannelSlug;
+    if (previousSlug && previousSlug !== slug) {
+      var prevInput = document.getElementById('channel-chat-input');
+      if (prevInput) {
+        var prevDraft = prevInput.value;
+        if (prevDraft) {
+          VoiceState.channelDrafts[previousSlug] = prevDraft;
+        } else {
+          delete VoiceState.channelDrafts[previousSlug];
+        }
+      }
+    }
+
     VoiceState.currentChannelSlug = slug;
     VoiceState.channelMembers = [];
     VoiceState.channelHasMore = false;
@@ -87,6 +113,12 @@ window.VoiceChannelChat = (function () {
     });
 
     VoiceLayout.showScreen('channel-chat');
+
+    // Restore channel draft
+    var channelInput = document.getElementById('channel-chat-input');
+    if (channelInput) {
+      channelInput.value = VoiceState.channelDrafts[slug] || '';
+    }
   }
 
   function appendMessage(data) {
@@ -384,7 +416,6 @@ window.VoiceChannelChat = (function () {
     if (isChair) {
       actions.push('divider');
       actions.push({ id: 'complete', label: 'Complete channel', icon: I.complete || '' });
-      actions.push({ id: 'archive', label: 'Archive channel', icon: I.archive || '', className: 'kill-action' });
     }
 
     actions.push('divider');
@@ -423,18 +454,6 @@ window.VoiceChannelChat = (function () {
           ).then(function (confirmed) {
             if (!confirmed) return;
             _channelAction(slug, '/api/channels/' + encodeURIComponent(slug) + '/complete', 'Channel completed', 'Failed to complete channel');
-          });
-        }
-        break;
-      case 'archive':
-        if (typeof ConfirmDialog !== 'undefined') {
-          ConfirmDialog.show(
-            'Archive Channel',
-            'Archive this channel? This cannot be undone.',
-            { confirmText: 'Archive', cancelText: 'Cancel', destructive: true }
-          ).then(function (confirmed) {
-            if (!confirmed) return;
-            _channelAction(slug, '/api/channels/' + encodeURIComponent(slug) + '/archive', 'Channel archived', 'Failed to archive channel');
           });
         }
         break;
