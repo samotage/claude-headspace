@@ -633,8 +633,10 @@ class TestRelayAgentResponse:
         db.session.add(agent_d)
         db.session.commit()
 
-        # Remove all memberships for this agent
+        # Remove all memberships for this agent AND its persona
+        # (persona fallback would otherwise find memberships by persona_id)
         ChannelMembership.query.filter_by(agent_id=agent_d.id).delete()
+        ChannelMembership.query.filter_by(persona_id=setup_data["persona_a"].id).delete()
         db.session.commit()
 
         result = delivery_service.relay_agent_response(

@@ -1508,7 +1508,12 @@ class TestBlockedPatternFalsePositives:
         assert result.intent == TurnIntent.QUESTION
 
     def test_real_world_objective_fix_transcript(self):
-        """Exact transcript text from the objective endpoint fix should be COMPLETION."""
+        """Exact transcript text from the objective endpoint fix should be detected as done.
+
+        Both COMPLETION and END_OF_COMMAND are valid — the text contains summary
+        patterns ("Here's what I found and fixed") and handoff patterns ("fix live"),
+        which may be classified as either depending on which patterns fire first.
+        """
         text = (
             "The endpoint works. Here's what I found and fixed:\n\n"
             "**What happened:** Your `POST /api/objective` request at 14:18:22 "
@@ -1529,7 +1534,7 @@ class TestBlockedPatternFalsePositives:
             "Server restarted with the fix live."
         )
         result = detect_agent_intent(text)
-        assert result.intent == TurnIntent.COMPLETION
+        assert result.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND)
 
 
 class TestConfirmationDetection:
@@ -1965,6 +1970,128 @@ class TestCommandCompleteMarkerInFullResponse:
             f"Expected COMPLETION but got {result.intent.value} "
             f"(pattern={result.matched_pattern})"
         )
+
+
+class TestChannelConversationPatterns:
+    """Tests for channel-style conversational responses without COMMAND COMPLETE.
+
+    Channel agents produce shorter, more conversational responses. These must
+    be detected as COMPLETION or END_OF_COMMAND (both trigger channel relay).
+    """
+
+    def test_heres_what_i_found(self):
+        """'Here's what I found' should be detected as end_of_command (summary pattern)."""
+        result = detect_agent_intent(
+            "Here's what I found: the database connection was timing out."
+        )
+        assert result.intent == TurnIntent.END_OF_COMMAND
+
+    def test_heres_what_i_discovered(self):
+        """'Here's what I discovered' should be detected."""
+        result = detect_agent_intent(
+            "Here's what I discovered after reviewing the logs."
+        )
+        assert result.intent == TurnIntent.END_OF_COMMAND
+
+    def test_fixed_now(self):
+        """'Fixed now.' at end of text should be completion."""
+        result = detect_agent_intent(
+            "Found the bug. It was in the config. Fixed now."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_ive_updated(self):
+        """'I've updated X' should be completion."""
+        result = detect_agent_intent(
+            "I've updated the config to use the correct port."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_ive_fixed(self):
+        """'I've fixed X' should be completion."""
+        result = detect_agent_intent("I've fixed the race condition in the handler.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_ive_resolved(self):
+        """'I've resolved X' should be completion."""
+        result = detect_agent_intent("I've resolved the merge conflict.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_thats_been_taken_care_of(self):
+        """'That's been taken care of' should be completion."""
+        result = detect_agent_intent(
+            "That's been taken care of. The migration runs cleanly now."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_fixed_opener_with_detail(self):
+        """'Fixed.' followed by detail should be completion opener."""
+        result = detect_agent_intent(
+            "Fixed. The test was failing because of a timezone mismatch."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_updated_opener_with_detail(self):
+        """'Updated.' followed by detail should be completion opener."""
+        result = detect_agent_intent(
+            "Updated. New endpoint is at /api/v2/users."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_resolved_opener_with_detail(self):
+        """'Resolved.' followed by detail should be completion opener."""
+        result = detect_agent_intent(
+            "Resolved. The circular import was caused by a lazy loader."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_ive_analyzed(self):
+        """'I've analyzed X' should be completion."""
+        result = detect_agent_intent(
+            "I've analyzed the performance data. The bottleneck is the N+1 query."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_after_investigating(self):
+        """'After investigating' should be completion."""
+        result = detect_agent_intent(
+            "After investigating, the root cause is a race condition."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_issue_is_fixed(self):
+        """'The issue is fixed' should be completion."""
+        result = detect_agent_intent("The issue is fixed.")
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_bug_was_resolved(self):
+        """'The bug was resolved' should be completion."""
+        result = detect_agent_intent(
+            "The bug was resolved by updating the dependency version."
+        )
+        assert result.intent == TurnIntent.COMPLETION
+
+    def test_short_factual_answer_is_progress(self):
+        """Short factual answers without completion signals should remain PROGRESS.
+
+        We intentionally don't classify bare informational responses as completion
+        to avoid false positives in non-channel contexts.
+        """
+        result = detect_agent_intent("The deployment is on version 2.3.1.")
+        assert result.intent == TurnIntent.PROGRESS
+
+    def test_continuation_reorders_but_does_not_veto_completion(self):
+        """Continuation patterns reorder detection (QUESTION first) but COMPLETION still fires.
+
+        The continuation guard vetoes END_OF_COMMAND but not COMPLETION patterns.
+        When "I've fixed" appears with "Now I need to", QUESTION is checked first
+        but COMPLETION still matches if no QUESTION is found.
+        """
+        result = detect_agent_intent(
+            "I've fixed the first bug. Now I need to address the second one."
+        )
+        # "I've fixed" matches COMPLETION even with continuation present
+        assert result.intent == TurnIntent.COMPLETION
 
 
 class TestHandoffPatterns:

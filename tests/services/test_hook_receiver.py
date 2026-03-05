@@ -171,6 +171,64 @@ class TestProcessSessionStart:
         assert mock_agent.persona_id == 5
 
     @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_updates_channel_memberships_on_persona_assign(
+        self, mock_db, mock_agent, fresh_state
+    ):
+        """session_start updates active ChannelMembership.agent_id when persona is assigned."""
+        mock_persona = MagicMock()
+        mock_persona.id = 5
+        mock_persona.slug = "developer-con-1"
+        mock_query = MagicMock()
+        mock_query.filter.return_value.update.return_value = 2  # 2 rows updated
+        with (
+            patch("claude_headspace.models.persona.Persona") as MockPersona,
+            patch(
+                "claude_headspace.models.channel_membership.ChannelMembership"
+            ) as MockMembership,
+        ):
+            MockPersona.query.filter_by.return_value.first.return_value = mock_persona
+            MockMembership.query.filter_by.return_value = mock_query
+            result = process_session_start(
+                mock_agent, "session-123", persona_slug="developer-con-1"
+            )
+        assert result.success is True
+        # Verify ChannelMembership was queried with persona_id and status="active"
+        # (F10 fix — update stale agent_id on persona assignment)
+        MockMembership.query.filter_by.assert_any_call(
+            persona_id=5, status="active"
+        )
+        # Verify agent_id was updated via .filter().update()
+        mock_query.filter.return_value.update.assert_called_once_with(
+            {"agent_id": mock_agent.id}
+        )
+
+    @patch("claude_headspace.services.hook_receiver.db")
+    def test_session_start_channel_membership_update_failure_non_fatal(
+        self, mock_db, mock_agent, fresh_state, caplog
+    ):
+        """ChannelMembership update failure does not block session start."""
+        mock_persona = MagicMock()
+        mock_persona.id = 5
+        mock_persona.slug = "developer-con-1"
+        with (
+            patch("claude_headspace.models.persona.Persona") as MockPersona,
+            patch(
+                "claude_headspace.models.channel_membership.ChannelMembership"
+            ) as MockMembership,
+        ):
+            MockPersona.query.filter_by.return_value.first.return_value = mock_persona
+            MockMembership.query.filter_by.side_effect = Exception("DB error")
+            import logging
+
+            with caplog.at_level(logging.WARNING):
+                result = process_session_start(
+                    mock_agent, "session-123", persona_slug="developer-con-1"
+                )
+        assert result.success is True
+        assert mock_agent.persona_id == 5
+        assert "channel membership update failed" in caplog.text
+
+    @patch("claude_headspace.services.hook_receiver.db")
     def test_session_start_unknown_persona_slug_logs_warning(
         self, mock_db, fresh_state, caplog
     ):

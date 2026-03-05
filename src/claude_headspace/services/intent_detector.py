@@ -72,8 +72,18 @@ COMPLETION_PATTERNS = [
     # Direct completion phrases
     r"(?i)^(?:done|complete|finished|all (?:done|set|finished))[\.!\s]*$",
     # Command completion phrases
-    r"(?i)(?:i'?(?:ve|m) (?:finished|completed|done)|task (?:complete|finished|done))",
+    r"(?i)(?:i'?(?:ve|m) (?:finished|completed|done|fixed|updated|resolved|patched|addressed)|task (?:complete|finished|done))",
     r"(?i)(?:successfully (?:completed|finished)|changes (?:have been )?(?:made|applied|committed))",
+    # Conversational completion (short channel-style responses)
+    r"(?i)(?:(?:i'?ve |I )?(?:fixed|updated|resolved|patched|addressed|corrected) (?:it|that|this|the \w[\w\s]{0,20}))[\.!\s]*$",
+    r"(?i)(?:that'?s been (?:taken care of|fixed|resolved|updated|handled|addressed))",
+    r"(?i)(?:(?:bug|issue|problem|error) (?:is |was )?(?:fixed|resolved|patched|addressed))[\.!\s]*$",
+    # "Fixed now" / "Resolved now" / "All sorted" at end of text
+    r"(?i)(?:fixed|resolved|sorted|handled|done|taken care of) now[\.!\s]*$",
+    # Investigation/analysis results
+    r"(?i)(?:i'?ve (?:analyzed|analysed|investigated|looked into|checked|reviewed|examined) )",
+    r"(?i)(?:after (?:investigating|looking into|checking|reviewing|analyzing|analysing),?\s)",
+    r"(?i)(?:the (?:root cause|issue|problem|bug) (?:is|was) )",
     # Summary completion phrases (tightened to avoid false positives)
     r"(?i)(?:that'?s all (?:the changes|I (?:need|have))|all changes (?:have been|are) (?:made|applied|committed|complete)|everything (?:is |looks |appears |seems )?(?:set|done|ready|in place|complete|good|healthy|fine|correct))[\.!\s]*$",
     # Implementation complete phrases
@@ -110,6 +120,8 @@ COMPLETION_PATTERNS = [
 # because the tail contains multiple lines and "Done." may not be the first.
 COMPLETION_OPENER_PATTERNS = [
     r"(?im)^(?:done|complete|finished|all (?:done|set|finished))[\.!]\s+\S",
+    # Channel-style conversational openers (e.g. "Fixed. The test was..." / "Updated. New endpoint...")
+    r"(?im)^(?:fixed|updated|resolved|patched|sorted)[\.!]\s+\S",
 ]
 
 # End-of-command: summary openers
@@ -122,6 +134,8 @@ END_OF_COMMAND_SUMMARY_PATTERNS = [
     r"(?i)(?:here'?s what (?:was|I) (?:changed|did|updated|implemented|fixed|added|created))",
     # Broader "here's what it covers" pattern
     r"(?i)(?:here'?s (?:a summary of )?what (?:it|this|the \w+) (?:covers|includes|contains|delivers))",
+    # "Here's what I found" and investigation result openers
+    r"(?i)(?:here'?s what I (?:found|discovered|noticed|observed|see|saw))",
     # Numbered change summaries (e.g. "9 prompts updated", "3 files changed")
     r"(?i)(?:\d+ (?:prompts?|files?|tests?|assertions?|functions?) (?:updated|changed|modified|added|removed|fixed|created))",
     # Numbered change summaries with adjective-first format (e.g. "6 new files", "8 modified files")

@@ -541,6 +541,30 @@ def _apply_recovered_turn_lifecycle(agent, command, turn, intent_result):
             broadcast_card_refresh(agent, "reconciler")
         except Exception:
             logger.debug("Card refresh broadcast failed during reconciliation")
+
+        # Channel relay: if this is a COMPLETION/END_OF_COMMAND turn for an agent
+        # with a persona, relay the response into any active channel (Finding F9).
+        # This makes the reconciler the reliable backbone for channel message relay.
+        if turn.intent in (TurnIntent.COMPLETION, TurnIntent.END_OF_COMMAND):
+            try:
+                ch_delivery = current_app.extensions.get("channel_delivery_service")
+                if ch_delivery and agent.persona_id:
+                    relayed = ch_delivery.relay_agent_response(
+                        agent=agent,
+                        turn_text=turn.text,
+                        turn_intent=turn.intent,
+                        turn_id=turn.id,
+                        command_id=command.id,
+                    )
+                    if relayed:
+                        logger.info(
+                            f"[RECONCILER] Relayed turn {turn.id} to channel "
+                            f"(agent={agent.id})"
+                        )
+            except Exception as e:
+                logger.warning(
+                    f"[RECONCILER] Channel relay failed for turn {turn.id}: {e}"
+                )
     except InvalidTransitionError as e:
         db.session.rollback()
         logger.warning(

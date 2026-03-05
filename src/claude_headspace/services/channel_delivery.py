@@ -424,6 +424,21 @@ class ChannelDeliveryService:
         membership = ChannelMembership.query.filter_by(
             agent_id=agent.id, status="active"
         ).first()
+
+        # Fallback: if agent_id doesn't match (stale after handoff/new session),
+        # try by persona_id and self-heal the agent_id (Finding F10 defense in depth).
+        if not membership and agent.persona_id:
+            membership = ChannelMembership.query.filter_by(
+                persona_id=agent.persona_id, status="active"
+            ).first()
+            if membership:
+                membership.agent_id = agent.id
+                db.session.commit()
+                logger.info(
+                    f"Self-healed channel membership {membership.id}: "
+                    f"agent_id updated to {agent.id} (persona fallback)"
+                )
+
         if not membership:
             return False
 

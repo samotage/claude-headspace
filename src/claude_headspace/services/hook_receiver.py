@@ -710,6 +710,29 @@ def process_session_start(
                         f"session_start: persona assigned — slug={persona_slug}, "
                         f"persona_id={persona.id}, agent_id={agent.id}"
                     )
+                    # Update any active ChannelMembership rows for this persona
+                    # to point to the new agent (fixes stale agent_id after handoff
+                    # or new session — Finding F10).
+                    try:
+                        from ..models.channel_membership import ChannelMembership
+
+                        updated = (
+                            ChannelMembership.query.filter_by(
+                                persona_id=persona.id, status="active"
+                            )
+                            .filter(ChannelMembership.agent_id != agent.id)
+                            .update({"agent_id": agent.id})
+                        )
+                        if updated:
+                            logger.info(
+                                f"session_start: updated {updated} channel membership(s) "
+                                f"agent_id -> {agent.id} for persona {persona.slug}"
+                            )
+                    except Exception as e:
+                        logger.warning(
+                            f"session_start: channel membership update failed "
+                            f"for persona {persona.slug}: {e}"
+                        )
                 else:
                     logger.warning(
                         f"session_start: unrecognised persona_slug={persona_slug}, "
