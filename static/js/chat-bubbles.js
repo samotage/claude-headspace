@@ -190,7 +190,7 @@ window.ChatBubbles = (function () {
         var sec = container.querySelector('[data-q-idx="' + qi + '"].bubble-question-section');
         var isMulti = sec && sec.getAttribute('data-multi') === '1';
 
-        if (isMulti) {
+        if (isMulti && selections[qi] instanceof Set) {
           if (selections[qi].has(oi)) {
             selections[qi].delete(oi);
             btn.classList.remove('bubble-option-selected');
@@ -198,7 +198,7 @@ window.ChatBubbles = (function () {
             selections[qi].add(oi);
             btn.classList.add('bubble-option-selected');
           }
-        } else {
+        } else if (sec) {
           sec.querySelectorAll('.bubble-option-btn').forEach(function (s) {
             s.classList.remove('bubble-option-selected');
           });

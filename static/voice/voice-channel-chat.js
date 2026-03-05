@@ -277,8 +277,10 @@ window.VoiceChannelChat = (function () {
     var showSender = true;
     if (prevMsg && _getSenderType(prevMsg) === senderType
         && (prevMsg.persona_name || 'Unknown') === (msg.persona_name || 'Unknown')) {
-      var gap = new Date(msg.sent_at).getTime() - new Date(prevMsg.sent_at).getTime();
-      if (gap < 120000) showSender = false;
+      if (msg.sent_at && prevMsg.sent_at) {
+        var gap = new Date(msg.sent_at).getTime() - new Date(prevMsg.sent_at).getTime();
+        if (gap < 120000) showSender = false;
+      }
     }
 
     var normalized = _toNormalizedMsg(msg);
