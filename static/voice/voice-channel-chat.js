@@ -1,7 +1,7 @@
 /* VoiceChannelChat — channel conversation view: message rendering,
  * send, live injection, and scroll-up pagination.
  *
- * Dependencies: VoiceState, VoiceAPI, VoiceChatRenderer, VoiceLayout, VoiceSidebar.
+ * Dependencies: VoiceState, VoiceAPI, ChatBubbles, VoiceLayout, VoiceSidebar.
  */
 window.VoiceChannelChat = (function () {
   'use strict';
@@ -12,10 +12,6 @@ window.VoiceChannelChat = (function () {
 
   // --- Public methods ---
 
-  /**
-   * Open channel chat screen for the given slug.
-   * Fetches members + messages in parallel, renders, scrolls to bottom.
-   */
   function showChannelChatScreen(slug) {
     VoiceState.currentChannelSlug = slug;
     VoiceState.channelMembers = [];
@@ -23,13 +19,11 @@ window.VoiceChannelChat = (function () {
     VoiceState.channelLoadingMore = false;
     VoiceState.channelOldestMessageTime = null;
 
-    // Update header
     var nameEl = document.getElementById('channel-chat-name');
     if (nameEl) nameEl.textContent = '#' + slug;
     var badgeEl = document.getElementById('channel-chat-type-badge');
     var memberCountEl = document.getElementById('channel-chat-member-count');
 
-    // Find channel info from sidebar state
     var channels = VoiceState.channels;
     for (var i = 0; i < channels.length; i++) {
       if (channels[i].slug === slug) {
@@ -38,14 +32,12 @@ window.VoiceChannelChat = (function () {
       }
     }
 
-    // Clear messages container
     var messagesEl = document.getElementById('channel-chat-messages');
     if (messagesEl) {
       messagesEl.innerHTML = '<div id="channel-chat-load-more" class="chat-load-more" style="display:none"></div>'
         + '<div class="channel-chat-loading">Loading messages...</div>';
     }
 
-    // Fetch members and messages in parallel
     var membersPromise = VoiceAPI.getChannelMembers(slug).then(function (members) {
       VoiceState.channelMembers = members || [];
       if (memberCountEl) {
@@ -58,7 +50,6 @@ window.VoiceChannelChat = (function () {
 
     var messagesPromise = VoiceAPI.getChannelMessages(slug, { limit: MESSAGE_LIMIT }).then(function (messages) {
       messages = messages || [];
-      // Messages arrive in chronological order (oldest first) from the API
       VoiceState.channelMessages[slug] = messages;
       VoiceState.channelHasMore = messages.length >= MESSAGE_LIMIT;
       if (messages.length > 0) {
@@ -76,14 +67,10 @@ window.VoiceChannelChat = (function () {
     VoiceLayout.showScreen('channel-chat');
   }
 
-  /**
-   * SSE callback: append a new message from a channel_message event.
-   */
   function appendMessage(data) {
     var slug = data.channel_slug;
     if (!slug) return;
 
-    // Build message object from SSE data
     var msg = {
       id: data.message_id || data.id || ('sse-ch-' + Date.now()),
       channel_slug: slug,
@@ -95,18 +82,15 @@ window.VoiceChannelChat = (function () {
       sent_at: data.sent_at || new Date().toISOString()
     };
 
-    // Add to cache
     if (!VoiceState.channelMessages[slug]) {
       VoiceState.channelMessages[slug] = [];
     }
-    // Deduplicate by id
     var existing = VoiceState.channelMessages[slug];
     for (var i = 0; i < existing.length; i++) {
       if (existing[i].id === msg.id) return;
     }
     existing.push(msg);
 
-    // Render bubble if this channel is currently open
     if (VoiceState.currentChannelSlug === slug && VoiceState.currentScreen === 'channel-chat') {
       var messagesEl = document.getElementById('channel-chat-messages');
       if (!messagesEl) return;
@@ -118,9 +102,6 @@ window.VoiceChannelChat = (function () {
     }
   }
 
-  /**
-   * Load older messages when user scrolls to top.
-   */
   function loadOlderMessages() {
     var slug = VoiceState.currentChannelSlug;
     if (!slug || !VoiceState.channelHasMore || VoiceState.channelLoadingMore) return;
@@ -145,12 +126,10 @@ window.VoiceChannelChat = (function () {
       if (messages.length < MESSAGE_LIMIT) VoiceState.channelHasMore = false;
       if (messages.length === 0) return;
 
-      // Messages arrive chronologically — prepend to cache
       var cached = VoiceState.channelMessages[slug] || [];
       VoiceState.channelMessages[slug] = messages.concat(cached);
       VoiceState.channelOldestMessageTime = messages[0].sent_at;
 
-      // Prepend to DOM, preserving scroll position
       if (messagesEl) {
         var frag = document.createDocumentFragment();
         for (var i = 0; i < messages.length; i++) {
@@ -158,11 +137,9 @@ window.VoiceChannelChat = (function () {
           _maybeInsertTimeSeparator(frag, messages[i], prevMsg);
           frag.appendChild(_createMessageEl(messages[i], prevMsg));
         }
-        // Insert after load-more div
         var firstChild = loadMoreEl ? loadMoreEl.nextSibling : messagesEl.firstChild;
         messagesEl.insertBefore(frag, firstChild);
 
-        // Preserve scroll position
         var newScrollHeight = messagesEl.scrollHeight;
         messagesEl.scrollTop = newScrollHeight - prevScrollHeight;
       }
@@ -172,17 +149,12 @@ window.VoiceChannelChat = (function () {
     });
   }
 
-  /**
-   * Send a message to the current channel.
-   * Optimistic render, then POST.
-   */
   function sendMessage(text) {
     if (!text || !text.trim()) return;
     text = text.trim();
     var slug = VoiceState.currentChannelSlug;
     if (!slug) return;
 
-    // Create optimistic message
     var optimisticId = 'opt-ch-' + (++_optimisticIdCounter);
     var msg = {
       id: optimisticId,
@@ -196,7 +168,6 @@ window.VoiceChannelChat = (function () {
       _optimistic: true
     };
 
-    // Add to cache and render
     if (!VoiceState.channelMessages[slug]) VoiceState.channelMessages[slug] = [];
     var cached = VoiceState.channelMessages[slug];
     cached.push(msg);
@@ -209,9 +180,7 @@ window.VoiceChannelChat = (function () {
       _scrollToBottom();
     }
 
-    // POST to API
     VoiceAPI.sendChannelMessage(slug, text).then(function (resp) {
-      // Promote optimistic message with real ID
       for (var i = 0; i < cached.length; i++) {
         if (cached[i].id === optimisticId) {
           cached[i].id = resp.id || cached[i].id;
@@ -220,15 +189,13 @@ window.VoiceChannelChat = (function () {
           break;
         }
       }
-      // Update DOM element
-      var bubble = messagesEl ? messagesEl.querySelector('[data-msg-id="' + optimisticId + '"]') : null;
+      var bubble = messagesEl ? messagesEl.querySelector('[data-turn-id="' + optimisticId + '"]') : null;
       if (bubble) {
-        bubble.setAttribute('data-msg-id', resp.id || optimisticId);
+        bubble.setAttribute('data-turn-id', resp.id || optimisticId);
         bubble.classList.remove('send-pending');
       }
     }).catch(function () {
-      // Mark as failed
-      var bubble = messagesEl ? messagesEl.querySelector('[data-msg-id="' + optimisticId + '"]') : null;
+      var bubble = messagesEl ? messagesEl.querySelector('[data-turn-id="' + optimisticId + '"]') : null;
       if (bubble) {
         bubble.classList.add('send-failed');
         bubble.classList.remove('send-pending');
@@ -237,6 +204,28 @@ window.VoiceChannelChat = (function () {
   }
 
   // --- Private helpers ---
+
+  function _getSenderType(msg) {
+    if (msg.message_type === 'system') return 'system';
+    if (!msg.agent_id) return 'operator';
+    return 'agent';
+  }
+
+  /** Map channel message -> normalized msg for ChatBubbles */
+  function _toNormalizedMsg(msg) {
+    var senderType = _getSenderType(msg);
+    var displayName = msg.persona_name || 'Unknown';
+    if (senderType === 'operator') displayName = msg.persona_name || 'Operator';
+
+    return {
+      id: msg.id,
+      actor: senderType === 'system' ? 'system' : (senderType === 'operator' ? 'user' : 'agent'),
+      senderName: displayName,
+      senderType: senderType,
+      text: msg.content || '',
+      timestamp: msg.sent_at
+    };
+  }
 
   function _renderAllMessages(slug) {
     var messagesEl = document.getElementById('channel-chat-messages');
@@ -261,12 +250,8 @@ window.VoiceChannelChat = (function () {
 
   function _createMessageEl(msg, prevMsg) {
     var senderType = _getSenderType(msg);
-    var div = document.createElement('div');
-    div.className = 'ch-msg ch-msg-' + senderType;
-    if (msg._optimistic) div.classList.add('send-pending');
-    div.setAttribute('data-msg-id', msg.id);
 
-    // Sender name (skip if same sender as previous and within 2 min gap)
+    // Determine if sender name should be shown
     var showSender = true;
     if (prevMsg && _getSenderType(prevMsg) === senderType
         && (prevMsg.persona_name || 'Unknown') === (msg.persona_name || 'Unknown')) {
@@ -274,64 +259,32 @@ window.VoiceChannelChat = (function () {
       if (gap < 120000) showSender = false;
     }
 
-    var html = '';
-    if (showSender && senderType !== 'system') {
-      var nameClass = 'ch-msg-sender ch-sender-' + senderType;
-      var displayName = msg.persona_name || 'Unknown';
-      if (senderType === 'operator') displayName = msg.persona_name || 'Operator';
-      html += '<div class="' + nameClass + '">' + VoiceChatRenderer.esc(displayName) + '</div>';
+    var normalized = _toNormalizedMsg(msg);
+    var opts = {
+      showSenderName: showSender,
+      showCopyButton: senderType !== 'system',
+      showIntentBadge: false
+    };
+
+    var frag = ChatBubbles.createBubble(normalized, opts);
+
+    // Extract the bubble element from the fragment for class additions
+    var bubble = frag.querySelector('.chat-bubble');
+    if (bubble) {
+      if (msg._optimistic) bubble.classList.add('send-pending');
     }
 
-    // Content
-    if (senderType === 'system') {
-      html += '<div class="ch-msg-system-text">' + VoiceChatRenderer.esc(msg.content) + '</div>';
-    } else {
-      html += '<div class="ch-msg-content">' + VoiceChatRenderer.renderMd(msg.content) + '</div>';
-    }
-
-    // Time
-    var sentDate = new Date(msg.sent_at);
-    var relTime = _formatRelativeTime(sentDate);
-    var absTime = sentDate.toLocaleString();
-    html += '<div class="ch-msg-time" title="' + VoiceChatRenderer.esc(absTime) + '">' + relTime + '</div>';
-
-    div.innerHTML = html;
-    return div;
-  }
-
-  function _getSenderType(msg) {
-    if (msg.message_type === 'system') return 'system';
-    if (!msg.agent_id) return 'operator';
-    return 'agent';
+    return frag;
   }
 
   function _maybeInsertTimeSeparator(container, msg, prevMsg) {
     if (!prevMsg) return;
     var gap = new Date(msg.sent_at).getTime() - new Date(prevMsg.sent_at).getTime();
     if (gap >= TIMESTAMP_GAP_MS) {
-      var sep = document.createElement('div');
-      sep.className = 'ch-time-separator';
-      sep.textContent = _formatTimestamp(new Date(msg.sent_at));
-      container.appendChild(sep);
+      container.appendChild(ChatBubbles.createTimeSeparator(
+        ChatBubbles.formatChatTime(msg.sent_at)
+      ));
     }
-  }
-
-  function _formatRelativeTime(date) {
-    var diff = (Date.now() - date.getTime()) / 1000;
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  }
-
-  function _formatTimestamp(date) {
-    var now = new Date();
-    var isToday = date.toDateString() === now.toDateString();
-    if (isToday) {
-      return 'Today ' + date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-    }
-    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-      + ' ' + date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   }
 
   function _scrollToBottom() {
@@ -346,14 +299,8 @@ window.VoiceChannelChat = (function () {
     return (el.scrollHeight - el.scrollTop - el.clientHeight) < 120;
   }
 
-  /**
-   * Display a voice bridge response as a system message in channel chat.
-   * @param {object} voice - Voice envelope {status_line, results, next_action}
-   */
   function showVoiceResult(voice) {
     if (!voice) return;
-
-    // Build content from voice envelope
     var parts = [];
     if (voice.status_line) parts.push(voice.status_line);
     if (voice.results && voice.results.length) {
@@ -362,7 +309,6 @@ window.VoiceChannelChat = (function () {
     if (voice.next_action) parts.push(voice.next_action);
     var content = parts.join('\n');
     if (!content) return;
-
     _showChannelSystemMessage(content);
   }
 
@@ -370,21 +316,15 @@ window.VoiceChannelChat = (function () {
   //  Channel chat kebab menu
   // =====================================================================
 
-  /** Determine if the current user is the chair of this channel. */
   function _isCurrentUserChair() {
-    // channelMembers comes from VoiceAPI.getChannelMembers(slug)
-    // Operator (non-agent) entries have agent_id = null and is_chair flag
     var members = VoiceState.channelMembers || [];
     for (var i = 0; i < members.length; i++) {
       var m = members[i];
       if (!m.agent_id && m.is_chair) return true;
     }
-    // Fallback: if no operator member found with is_chair, check if the operator
-    // is first member (legacy channels without explicit is_chair)
     return false;
   }
 
-  /** Build actions for the channel chat header kebab menu. */
   function buildChannelChatActions() {
     var I = (typeof PortalKebabMenu !== 'undefined') ? PortalKebabMenu.ICONS : {};
     var isChair = _isCurrentUserChair();
@@ -408,7 +348,6 @@ window.VoiceChannelChat = (function () {
     return actions;
   }
 
-  /** Handle channel chat kebab action. */
   function handleChannelChatAction(actionId, slug) {
     switch (actionId) {
       case 'download-transcript':
@@ -416,12 +355,9 @@ window.VoiceChannelChat = (function () {
         window.open('/api/channels/' + encodeURIComponent(slug) + '/transcript', '_blank');
         break;
       case 'add-member':
-        // Open member autocomplete - for now show a system message
-        // In the voice app we don't have the full autocomplete widget yet
         _showChannelSystemMessage('Member picker not yet available in voice app. Use the dashboard to add members.');
         break;
       case 'info':
-        // Show channel info (navigate to dashboard channel view)
         window.open('/?channel=' + encodeURIComponent(slug), '_blank');
         break;
       case 'copy-slug':
@@ -476,7 +412,6 @@ window.VoiceChannelChat = (function () {
     }
   }
 
-  /** Execute a channel POST action with success/error messages. */
   function _channelAction(slug, url, successMsg, errorMsg, onSuccess) {
     CHUtils.apiFetch(url, { method: 'POST' })
       .then(function (r) { return r.json(); })
@@ -496,7 +431,6 @@ window.VoiceChannelChat = (function () {
       });
   }
 
-  /** Show a system message in the channel chat. */
   function _showChannelSystemMessage(text) {
     var slug = VoiceState.currentChannelSlug;
     if (!slug) return;
@@ -522,7 +456,6 @@ window.VoiceChannelChat = (function () {
     }
   }
 
-  /** Open the channel chat kebab menu from the header trigger button. */
   function openChannelChatKebab() {
     var btn = document.getElementById('channel-chat-kebab-btn');
     var slug = VoiceState.currentChannelSlug;

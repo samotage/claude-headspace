@@ -2318,6 +2318,39 @@ body::after {
     transform: translateX(100%);
     transition: transform 0.25s ease;
     box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+
+    /* Map chat-bubbles.css variables to dashboard theme */
+    --user-bubble: #1f6feb;
+    --agent-bubble: var(--bg-elevated);
+    --accent: var(--cyan);
+    --text: var(--text-primary);
+    --text-dim: var(--text-secondary);
+    --text-muted: #6a6a78;
+    --btn-text-on-accent: #fff;
+    --border-emphasis: var(--border-bright);
+    --icon-btn-bg: rgba(240, 246, 252, 0.06);
+    --icon-btn-bg-hover: rgba(240, 246, 252, 0.1);
+    --icon-btn-bg-active: rgba(240, 246, 252, 0.15);
+    --code-block-bg: rgba(0, 0, 0, 0.35);
+    --inline-code-bg: rgba(0, 0, 0, 0.3);
+    --hr-color: rgba(255, 255, 255, 0.12);
+    --divider-bubble: rgba(240, 246, 252, 0.1);
+    --divider-bubble-user: rgba(255, 255, 255, 0.15);
+    --bubble-intent-user: rgba(255, 255, 255, 0.7);
+    --success: #73e0a0;
+    --success-border: rgba(115, 224, 160, 0.35);
+    --success-bg: rgba(115, 224, 160, 0.08);
+    --warning: var(--amber);
+    --warning-border: rgba(224, 176, 115, 0.35);
+    --warning-bg: rgba(224, 176, 115, 0.08);
+    --error: var(--red);
+    --error-border: rgba(224, 115, 115, 0.3);
+    --error-bg: rgba(224, 115, 115, 0.08);
+    --accent-selected: rgba(86, 212, 221, 0.15);
+    --accent-submit-bg: rgba(86, 212, 221, 0.12);
+    --accent-submit-hover: rgba(86, 212, 221, 0.22);
+    --image-bg: rgba(0, 0, 0, 0.2);
+    --chat-font-size: 13px;
 }
 
 .channel-chat-panel.open {

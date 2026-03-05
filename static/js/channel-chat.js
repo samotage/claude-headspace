@@ -915,45 +915,27 @@
     }
 
     function _createMessageElement(data) {
-        var el = document.createElement('div');
         var isSystem = data.message_type === 'system';
-
-        if (isSystem) {
-            el.className = 'channel-chat-msg channel-chat-msg-system text-center text-muted text-xs italic py-1';
-            el.textContent = data.content || '';
-            return el;
-        }
-
-        el.className = 'channel-chat-msg py-1';
-
         var personaName = data.persona_name || 'Unknown';
-        // Determine color: "You" (operator) = cyan, agents = green
-        var nameClass = (personaName === 'You' || data._optimistic) ? 'text-cyan' : 'text-green';
+        var isOperator = (personaName === 'You' || data._optimistic || !data.agent_id);
+        var senderType = isSystem ? 'system' : (isOperator ? 'operator' : 'agent');
 
-        var timestamp = '';
-        if (data.sent_at) {
-            var date = new Date(data.sent_at);
-            var now = new Date();
-            var diff = now - date;
-            if (diff < 60000) {
-                timestamp = 'just now';
-            } else if (diff < 3600000) {
-                timestamp = Math.floor(diff / 60000) + 'm ago';
-            } else if (diff < 86400000) {
-                timestamp = Math.floor(diff / 3600000) + 'h ago';
-            } else {
-                timestamp = date.toLocaleDateString();
-            }
-        }
+        var normalized = {
+            id: data.id,
+            actor: isSystem ? 'system' : (isOperator ? 'user' : 'agent'),
+            senderName: isSystem ? null : personaName,
+            senderType: senderType,
+            text: data.content || '',
+            timestamp: data.sent_at
+        };
 
-        var html = '<div class="flex items-baseline gap-2">' +
-            '<span class="' + nameClass + ' text-xs font-medium">' + _escapeHtml(personaName) + '</span>' +
-            '<span class="text-muted text-[10px]" title="' + _escapeHtml(data.sent_at || '') + '">' + _escapeHtml(timestamp) + '</span>' +
-            '</div>' +
-            '<div class="text-secondary text-sm mt-0.5 whitespace-pre-wrap break-words">' + _escapeHtml(data.content || '') + '</div>';
+        var frag = ChatBubbles.createBubble(normalized, {
+            showSenderName: !isSystem,
+            showCopyButton: !isSystem,
+            showIntentBadge: false
+        });
 
-        el.innerHTML = html;
-        return el;
+        return frag;
     }
 
     function _showNewIndicator() {
@@ -964,7 +946,7 @@
         if (_newIndicatorEl) _newIndicatorEl.classList.add('hidden');
     }
 
-    var _escapeHtml = (global.CHUtils && global.CHUtils.escapeHtml) || function(str) {
+    var _escapeHtml = (global.ChatBubbles && global.ChatBubbles.esc) || (global.CHUtils && global.CHUtils.escapeHtml) || function(str) {
         if (!str) return '';
         var div = document.createElement('div');
         div.textContent = str;
