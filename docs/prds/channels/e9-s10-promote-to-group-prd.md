@@ -150,7 +150,7 @@ A new agent is created for the selected persona, associated with the same projec
 The new agent's persona is added to the channel as a member.
 
 **FR10: Context seeding**
-The last 20 messages from the original agent's conversation history (turns from the agent's current or most recent command) are formatted as a context briefing and delivered to the new agent. The briefing format follows the existing channel context briefing pattern from S4 (the `_send_context_briefing` method). The briefing is posted as a system message in the group channel, visible to all members.
+The last 20 turns from the original agent's full conversation history (across all commands, not just the current one) are formatted as a context briefing and delivered privately to the new agent via tmux injection. The briefing is not posted as a visible message in the group channel — it is a private briefing to the new agent only, giving them context without cluttering the channel. The briefing format follows the existing channel context briefing pattern from S4 (the `_send_context_briefing` method).
 
 **FR11: System origin message**
 A system message is posted in the group channel: "Channel created from conversation with [original agent persona name]. Context: last 20 messages shared."
