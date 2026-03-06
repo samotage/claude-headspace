@@ -19,6 +19,8 @@ window.VoiceAPI = (function () {
   let _onGap = null;
   let _onChannelMessage = null;
   let _onChannelUpdate = null;
+  let _onChannelMemberConnected = null;
+  let _onChannelReady = null;
 
   function init(baseUrl, token) {
     _baseUrl = baseUrl.replace(/\/+$/, '');
@@ -50,6 +52,8 @@ window.VoiceAPI = (function () {
   function onGap(fn) { _onGap = fn; }
   function onChannelMessage(fn) { _onChannelMessage = fn; }
   function onChannelUpdate(fn) { _onChannelUpdate = fn; }
+  function onChannelMemberConnected(fn) { _onChannelMemberConnected = fn; }
+  function onChannelReady(fn) { _onChannelReady = fn; }
 
   // --- HTTP helpers ---
 
@@ -291,6 +295,20 @@ window.VoiceAPI = (function () {
       } catch (err) { /* ignore */ }
     });
 
+    _sse.addEventListener('channel_member_connected', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        if (_onChannelMemberConnected) _onChannelMemberConnected(data);
+      } catch (err) { /* ignore */ }
+    });
+
+    _sse.addEventListener('channel_ready', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        if (_onChannelReady) _onChannelReady(data);
+      } catch (err) { /* ignore */ }
+    });
+
     _sse.onerror = function () {
       _sse.close();
       _sse = null;
@@ -383,10 +401,22 @@ window.VoiceAPI = (function () {
     return _fetchCookie('/api/channels/' + encodeURIComponent(slug) + '/members');
   }
 
-  function createChannel(name, channelType, memberAgentIds) {
-    var body = { name: name, channel_type: channelType };
-    if (memberAgentIds && memberAgentIds.length > 0) body.member_agents = memberAgentIds;
+  function createChannel(projectId, channelType, personaSlugs) {
+    var body = {
+      project_id: projectId,
+      channel_type: channelType,
+      persona_slugs: personaSlugs
+    };
     return _fetchCookie('/api/channels', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  function addChannelMember(slug, personaSlug, projectId) {
+    var body = { persona_slug: personaSlug };
+    if (projectId) body.project_id = projectId;
+    return _fetchCookie('/api/channels/' + encodeURIComponent(slug) + '/members', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
   }
 
   function getAvailableMembers() {
@@ -418,6 +448,8 @@ window.VoiceAPI = (function () {
     onGap: onGap,
     onChannelMessage: onChannelMessage,
     onChannelUpdate: onChannelUpdate,
+    onChannelMemberConnected: onChannelMemberConnected,
+    onChannelReady: onChannelReady,
     getSessions: getSessions,
     sendCommand: sendCommand,
     sendSelect: sendSelect,
@@ -439,6 +471,7 @@ window.VoiceAPI = (function () {
     sendChannelMessage: sendChannelMessage,
     getChannelMembers: getChannelMembers,
     createChannel: createChannel,
+    addChannelMember: addChannelMember,
     getAvailableMembers: getAvailableMembers
   };
 })();

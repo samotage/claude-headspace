@@ -148,7 +148,7 @@
               <span id="channel-chat-name" class="channel-chat-name">#channel</span>
               <span id="channel-chat-type-badge" class="channel-chat-type-badge">workshop</span>
             </div>
-            <span id="channel-chat-member-count" class="channel-chat-member-count"></span>
+            <div id="channel-chat-member-pills" class="channel-chat-member-pills"></div>
           </div>
           <button id="channel-chat-kebab-btn" class="chat-header-kebab-btn" aria-label="Channel actions" aria-expanded="false">&#8942;</button>
         </div>
@@ -434,17 +434,19 @@
     <div id="persona-picker-list" class="persona-picker-list"></div>
   </div>
 
-  <!-- Create Channel Bottom Sheet -->
+  <!-- Create Channel / Add Member Bottom Sheet -->
   <div id="channel-picker-backdrop" class="channel-picker-backdrop"></div>
-  <div id="channel-picker" class="channel-picker">
+  <div id="channel-picker" class="channel-picker" data-mode="create">
     <div class="channel-picker-header">
-      <h2>Create Channel</h2>
+      <h2 id="channel-picker-title">Create Channel</h2>
       <button id="channel-picker-close" class="settings-close-btn" aria-label="Close">&times;</button>
     </div>
     <div class="channel-picker-body">
       <div class="channel-picker-field">
-        <label>Channel Name</label>
-        <input id="channel-name-input" class="channel-picker-input" placeholder="e.g. auth-review" maxlength="50">
+        <label>Project</label>
+        <select id="channel-project-select" class="channel-picker-select" required>
+          <option value="">Select project...</option>
+        </select>
       </div>
       <div class="channel-picker-field">
         <label>Type</label>
@@ -457,10 +459,10 @@
         </select>
       </div>
       <div class="channel-picker-field">
-        <label>Members <span class="channel-picker-optional">(optional)</span></label>
-        <div id="channel-member-list" class="channel-member-list"></div>
+        <label id="channel-persona-list-label">Personas <span class="channel-picker-optional">(select one or more)</span></label>
+        <div id="channel-persona-list" class="channel-persona-list"></div>
       </div>
-      <button id="channel-create-submit" class="btn-primary channel-create-submit-btn">Create</button>
+      <button id="channel-create-submit" class="btn-primary channel-create-submit-btn">Create Channel (0 selected)</button>
     </div>
   </div>
 

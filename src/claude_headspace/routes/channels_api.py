@@ -32,6 +32,7 @@ from ..services.channel_service import (
     NotAMemberError,
     NotChairError,
     PersonaNotFoundError,
+    ProjectNotFoundError,
     PromoteToGroupError,
     SoleChairError,
 )
@@ -80,6 +81,7 @@ _ERROR_MAP = {
     ChannelDeletePreconditionError: (409, "delete_precondition_failed"),
     SoleChairError: (409, "sole_chair"),
     PromoteToGroupError: (500, "promote_to_group_failed"),
+    ProjectNotFoundError: (404, "project_not_found"),
 }
 
 
@@ -278,9 +280,70 @@ def _message_to_dict(message, channel_slug: str) -> dict:
 @channels_api_bp.route("/api/channels", methods=["POST"])
 @_channel_route
 def create_channel(*, persona, agent, service):
-    """Create a new channel (FR1)."""
+    """Create a new channel (FR1).
+
+    Supports two request shapes:
+    - S11 path: ``{channel_type, project_id, persona_slugs}``
+    - V0 legacy path: ``{name, channel_type, ...}``
+    """
     data = request.get_json(silent=True) or {}
 
+    # ── S11 path: persona_slugs present ──────────────────────────────
+    if "persona_slugs" in data:
+        persona_slugs = data.get("persona_slugs")
+        channel_type = (
+            data.get("channel_type", "").strip()
+            if isinstance(data.get("channel_type"), str)
+            else ""
+        )
+        project_id = data.get("project_id")
+
+        if not isinstance(persona_slugs, list) or not persona_slugs:
+            return _error_response(
+                400,
+                "invalid_field",
+                "persona_slugs must be a non-empty list of persona slug strings",
+            )
+        if not channel_type:
+            return _error_response(
+                400, "missing_fields", "Missing required field: channel_type"
+            )
+        if project_id is None:
+            return _error_response(
+                400, "missing_fields", "Missing required field: project_id"
+            )
+        if not isinstance(project_id, int):
+            return _error_response(
+                400, "invalid_field", "project_id must be an integer"
+            )
+
+        # Validate channel_type
+        from ..models.channel import ChannelType
+
+        try:
+            ChannelType(channel_type)
+        except ValueError:
+            valid_types = [ct.value for ct in ChannelType]
+            return _error_response(
+                400,
+                "invalid_field",
+                f"Invalid channel_type '{channel_type}'. "
+                f"Must be one of: {', '.join(valid_types)}",
+            )
+
+        try:
+            channel = service.create_channel_from_personas(
+                creator_persona=persona,
+                channel_type=channel_type,
+                project_id=project_id,
+                persona_slugs=persona_slugs,
+            )
+        except ChannelError as e:
+            return _handle_service_error(e)
+
+        return jsonify(_channel_to_dict(channel)), 201
+
+    # ── V0 legacy path: name present ─────────────────────────────────
     name = data.get("name", "").strip() if isinstance(data.get("name"), str) else ""
     channel_type = (
         data.get("channel_type", "").strip()
@@ -487,10 +550,15 @@ def add_member(slug: str, *, persona, agent, service):
             400, "missing_fields", "Missing required field: persona_slug or agent_id"
         )
 
+    project_id = data.get("project_id")
+    if project_id is not None and not isinstance(project_id, int):
+        return _error_response(400, "invalid_field", "project_id must be an integer")
+
     membership = service.add_member(
         slug=slug,
         persona_slug=persona_slug,
         caller_persona=persona,
+        project_id=project_id,
     )
 
     return jsonify(_membership_to_dict(membership)), 201

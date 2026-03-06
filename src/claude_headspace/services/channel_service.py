@@ -117,6 +117,10 @@ class PromoteToGroupError(ChannelError):
     """Error during promote-to-group orchestration."""
 
 
+class ProjectNotFoundError(ChannelError):
+    """Project with the given ID does not exist."""
+
+
 # ── Service ──────────────────────────────────────────────────────────────
 
 
@@ -579,6 +583,7 @@ class ChannelService:
         slug: str,
         persona_slug: str,
         caller_persona: Persona,
+        project_id: int | None = None,
     ) -> ChannelMembership:
         """Add a persona to a channel.
 
@@ -586,6 +591,8 @@ class ChannelService:
             slug: Channel slug.
             persona_slug: Slug of the persona to add.
             caller_persona: The persona making the request.
+            project_id: Project to spin up the new agent under. Falls back to
+                the channel's own project_id if None.
 
         Returns:
             The created ChannelMembership.
@@ -616,18 +623,17 @@ class ChannelService:
                 f"of #{channel.slug}."
             )
 
-        # Find or spin up agent
-        active_agent = self._spin_up_agent_for_persona(target_persona)
+        # Determine effective project_id — prefer caller-supplied, fall back to channel's
+        effective_project_id = project_id if project_id is not None else channel.project_id
 
-        # Check one-agent-one-channel constraint
-        if active_agent:
-            self._check_agent_channel_conflict(active_agent)
+        # Spin up fresh agent (S11: always fresh, no reuse)
+        self._spin_up_agent_for_persona(target_persona, project_id=effective_project_id)
 
-        # Create membership
+        # Create membership with agent_id=None (agent links via session-start hook)
         membership = ChannelMembership(
             channel_id=channel.id,
             persona_id=target_persona.id,
-            agent_id=active_agent.id if active_agent else None,
+            agent_id=None,
             is_chair=False,
             status="active",
         )
@@ -636,18 +642,15 @@ class ChannelService:
         self._post_system_message(channel, f"{target_persona.name} joined the channel")
         db.session.commit()
 
-        # Deliver context briefing if the agent is available and channel has messages
-        if active_agent and active_agent.tmux_pane_id:
-            self._deliver_context_briefing(channel, active_agent)
-
         members = self._get_member_names(channel)
         self._broadcast_update(
             channel,
-            "member_added",
+            "channel_member_added",
             {
                 "slug": channel.slug,
                 "persona_slug": persona_slug,
                 "persona_name": target_persona.name,
+                "agent_id": None,
                 "members": members,
             },
         )
@@ -1397,6 +1400,236 @@ class ChannelService:
             self._cleanup_channel_after_failure(channel.id)
             raise PromoteToGroupError(f"Promote-to-group failed: {e}") from e
 
+    # ── S11: Persona-based channel creation ──────────────────────────
+
+    def create_channel_from_personas(
+        self,
+        creator_persona: Persona,
+        channel_type: str,
+        project_id: int,
+        persona_slugs: list[str],
+    ) -> Channel:
+        """Create a pending channel and spin up fresh agents for each persona.
+
+        S11 creation path: no name input required — the channel name is
+        auto-generated from the persona names (e.g. "Robbo + Con + Wado").
+        Agents are spun up asynchronously; each membership starts with
+        ``agent_id = None`` and is linked when the agent registers via the
+        session-start hook.
+
+        Args:
+            creator_persona: Operator persona creating the channel.
+            channel_type: One of the ChannelType enum values.
+            project_id: Project to spin up agents under.
+            persona_slugs: Non-empty list of persona slugs to invite.
+
+        Returns:
+            The created Channel (status="pending").
+
+        Raises:
+            ProjectNotFoundError: If project_id does not resolve to a project.
+            PersonaNotFoundError: If any slug does not resolve to an active persona.
+            NoCreationCapabilityError: If creator cannot create channels.
+            ValueError: If persona_slugs is empty.
+        """
+        if not persona_slugs:
+            raise ValueError("persona_slugs must be a non-empty list")
+
+        # Validate project
+        project = Project.query.get(project_id)
+        if not project:
+            raise ProjectNotFoundError(
+                f"Error: Project #{project_id} not found."
+            )
+
+        # Resolve all personas first — fail fast before any DB writes
+        target_personas: list[Persona] = []
+        for slug in persona_slugs:
+            persona = Persona.query.filter_by(slug=slug, status="active").first()
+            if not persona:
+                raise PersonaNotFoundError(
+                    f"Error: Persona '{slug}' not found or not active."
+                )
+            target_personas.append(persona)
+
+        # Auto-generate name from persona names
+        channel_name = " + ".join(p.name for p in target_personas)
+
+        # Create channel (pending status is the default in create_channel)
+        channel = self.create_channel(
+            creator_persona=creator_persona,
+            name=channel_name,
+            channel_type=channel_type,
+            project_id=project_id,
+        )
+        # After create_channel, status may have been set to active if members
+        # were added. Force it back to pending since agents aren't linked yet.
+        if channel.status != "pending":
+            channel.status = "pending"
+            db.session.commit()
+
+        # Create memberships (agent_id=None) and kick off spin-up for each persona
+        for persona in target_personas:
+            membership = ChannelMembership(
+                channel_id=channel.id,
+                persona_id=persona.id,
+                agent_id=None,
+                is_chair=False,
+                status="active",
+            )
+            db.session.add(membership)
+
+        db.session.commit()
+
+        # Spin up agents after memberships are committed so link_agent_to_pending_membership
+        # can find the records when the session-start hook fires.
+        for persona in target_personas:
+            self._spin_up_agent_for_persona(persona, project_id=project_id)
+
+        # Inject initiation system message
+        self._post_system_message(channel, "Channel initiating...")
+        db.session.commit()
+
+        logger.info(
+            f"create_channel_from_personas: created channel #{channel.slug} "
+            f"({channel_name}) with {len(target_personas)} pending agents"
+        )
+        return channel
+
+    def link_agent_to_pending_membership(self, agent: Agent) -> None:
+        """Link a newly-registered agent to its pending ChannelMembership.
+
+        Called from the session-start hook after the agent is persisted and
+        its persona_id is set. Finds the oldest pending membership for the
+        agent's persona and links the agent to it, then triggers a readiness
+        check on the channel.
+
+        Args:
+            agent: The agent that just registered via session-start.
+        """
+        if not agent.persona_id:
+            return
+
+        # Find oldest pending membership for this persona
+        membership = (
+            ChannelMembership.query.join(Channel)
+            .filter(
+                ChannelMembership.persona_id == agent.persona_id,
+                ChannelMembership.agent_id.is_(None),
+                Channel.status == "pending",
+            )
+            .order_by(ChannelMembership.joined_at.asc())
+            .first()
+        )
+
+        if not membership:
+            return
+
+        membership.agent_id = agent.id
+        try:
+            db.session.commit()
+            logger.info(
+                f"link_agent_to_pending_membership: linked agent_id={agent.id} "
+                f"to membership_id={membership.id} (channel_id={membership.channel_id})"
+            )
+        except Exception as e:
+            logger.warning(
+                f"link_agent_to_pending_membership: commit failed for agent_id={agent.id}: {e}"
+            )
+            db.session.rollback()
+            return
+
+        self.check_channel_ready(membership.channel_id)
+
+    def check_channel_ready(self, channel_id: int) -> bool:
+        """Check whether all non-chair members of a pending channel are connected.
+
+        If all connected, transitions the channel to active, injects a
+        go-signal system message, and broadcasts ``channel_ready`` SSE.
+        Always broadcasts ``channel_member_connected`` with the current counts.
+
+        Args:
+            channel_id: ID of the channel to check.
+
+        Returns:
+            True if the channel was transitioned to active, False otherwise.
+        """
+        channel = Channel.query.get(channel_id)
+        if not channel:
+            return False
+        if channel.status != "pending":
+            return False
+
+        # Count non-chair memberships (these are the agent slots being spun up)
+        non_chair_memberships = ChannelMembership.query.filter_by(
+            channel_id=channel_id, is_chair=False, status="active"
+        ).all()
+
+        total = len(non_chair_memberships)
+        connected = sum(1 for m in non_chair_memberships if m.agent_id is not None)
+
+        # Determine the persona that just connected for the SSE payload
+        # (the most recently linked non-chair membership)
+        just_connected_membership = (
+            ChannelMembership.query.filter(
+                ChannelMembership.channel_id == channel_id,
+                ChannelMembership.is_chair.is_(False),
+                ChannelMembership.agent_id.isnot(None),
+            )
+            .order_by(ChannelMembership.joined_at.desc())
+            .first()
+        )
+
+        persona_name = ""
+        persona_slug = ""
+        agent_id = None
+        if just_connected_membership and just_connected_membership.persona:
+            persona_name = just_connected_membership.persona.name
+            persona_slug = just_connected_membership.persona.slug
+            agent_id = just_connected_membership.agent_id
+
+        # Broadcast member-connected event
+        self._broadcast_update(
+            channel,
+            "channel_member_connected",
+            {
+                "slug": channel.slug,
+                "persona_name": persona_name,
+                "persona_slug": persona_slug,
+                "agent_id": agent_id,
+                "connected_count": connected,
+                "total_count": total,
+            },
+        )
+
+        if total > 0 and connected >= total:
+            # All agents connected — transition to active
+            self._transition_to_active(channel)
+            self._post_system_message(
+                channel,
+                "All agents connected — channel is ready.",
+            )
+            db.session.commit()
+            self._broadcast_update(
+                channel,
+                "channel_ready",
+                {
+                    "slug": channel.slug,
+                    "name": channel.name,
+                },
+            )
+            logger.info(
+                f"check_channel_ready: channel #{channel.slug} is now active "
+                f"({connected}/{total} agents connected)"
+            )
+            return True
+
+        logger.info(
+            f"check_channel_ready: channel #{channel.slug} still pending "
+            f"({connected}/{total} agents connected)"
+        )
+        return False
+
     # ── Internal helpers ─────────────────────────────────────────────
 
     def _broadcast_channel_created(self, channel: Channel) -> None:
@@ -1697,41 +1930,35 @@ class ChannelService:
 
         return False
 
-    def _spin_up_agent_for_persona(self, persona: Persona) -> Agent | None:
-        """Find or create an agent for a persona.
+    def _spin_up_agent_for_persona(
+        self, persona: Persona, project_id: int | None = None
+    ) -> Agent | None:
+        """Create a fresh agent for a persona.
 
-        Returns the active agent, or None if spin-up was initiated
-        asynchronously (agent will link via session-start hook).
+        S11: Always spins up a new agent — never reuses an existing active
+        agent. If ``project_id`` is None, logs a warning and returns None
+        rather than silently falling back to an arbitrary project.
 
         Args:
-            persona: The persona to find/create an agent for.
+            persona: The persona to spin up an agent for.
+            project_id: Project to spin up the agent under. Required.
 
         Returns:
-            Active Agent instance, or None if agent is being spun up.
+            None — agent creation is async. The agent will link to its
+            ChannelMembership when it registers via the session-start hook.
         """
-        # Check for existing active agent
-        active_agent = Agent.query.filter_by(
-            persona_id=persona.id, ended_at=None
-        ).first()
-        if active_agent:
-            return active_agent
+        if project_id is None:
+            logger.warning(
+                f"_spin_up_agent_for_persona: project_id is None for persona "
+                f"{persona.slug} — cannot spin up without a project"
+            )
+            return None
 
-        # No active agent — spin up
         try:
-            # Need a project to spin up an agent — use the first project
-            from ..models.project import Project
             from .agent_lifecycle import create_agent
 
-            project = Project.query.first()
-            if not project:
-                logger.warning(
-                    f"Cannot spin up agent for persona {persona.slug}: "
-                    f"no projects found"
-                )
-                return None
-
             result = create_agent(
-                project_id=project.id,
+                project_id=project_id,
                 persona_slug=persona.slug,
             )
             if not result.success:
@@ -1743,7 +1970,10 @@ class ChannelService:
             # Agent creation is async — agent_id not immediately available.
             # Return None and let the membership be created with agent_id=NULL.
             # The agent will be linked when it registers via session-start hook.
-            logger.info(f"Agent spin-up initiated for persona {persona.slug}")
+            logger.info(
+                f"Agent spin-up initiated for persona {persona.slug} "
+                f"under project_id={project_id}"
+            )
             return None
         except Exception as e:
             logger.warning(f"Agent spin-up error for persona {persona.slug}: {e}")

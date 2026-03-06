@@ -1012,39 +1012,122 @@ window.VoiceSidebar = (function () {
     VoiceChannelChat.showChannelChatScreen(slug);
   }
 
-  // --- Create Channel Bottom Sheet ---
+  // --- Create Channel / Add Member Bottom Sheet ---
 
-  function openChannelPicker() {
+  function openChannelPicker(mode) {
+    mode = mode || 'create';
     VoiceState.channelPickerOpen = true;
     var bd = document.getElementById('channel-picker-backdrop');
     var pk = document.getElementById('channel-picker');
     if (bd) bd.classList.add('open');
-    if (pk) pk.classList.add('open');
-    // Reset form
-    var nameInput = document.getElementById('channel-name-input');
-    var typeSelect = document.getElementById('channel-type-select');
-    if (nameInput) { nameInput.value = ''; nameInput.focus(); }
-    if (typeSelect) typeSelect.selectedIndex = 0;
-    // Clone-replace submit button to prevent stale listeners
+    if (pk) {
+      pk.classList.add('open');
+      pk.setAttribute('data-mode', mode);
+    }
+
+    // Update title and CTA label based on mode
+    var titleEl = document.getElementById('channel-picker-title');
     var submitBtn = document.getElementById('channel-create-submit');
+    if (mode === 'add-member') {
+      if (titleEl) titleEl.textContent = 'Add Member';
+      if (submitBtn) submitBtn.textContent = 'Add to Channel';
+    } else {
+      if (titleEl) titleEl.textContent = 'Create Channel';
+      if (submitBtn) submitBtn.textContent = 'Create Channel (0 selected)';
+    }
+
+    // Reset project and persona list
+    var projectSelect = document.getElementById('channel-project-select');
+    var typeSelect = document.getElementById('channel-type-select');
+    var personaList = document.getElementById('channel-persona-list');
+    if (projectSelect) {
+      projectSelect.innerHTML = '<option value="">Select project...</option>';
+    }
+    if (typeSelect) typeSelect.selectedIndex = 0;
+    if (personaList) personaList.innerHTML = '<div class="channel-picker-empty">Select a project first</div>';
+
+    // Clone-replace submit button to prevent stale listeners
     if (submitBtn) {
       var newBtn = submitBtn.cloneNode(true);
       submitBtn.parentNode.replaceChild(newBtn, submitBtn);
       newBtn.addEventListener('click', function () { _submitCreateChannel(); });
     }
-    // Enter key on name input submits
-    if (nameInput) {
-      nameInput.onkeydown = function (e) {
-        if (e.key === 'Enter') { e.preventDefault(); _submitCreateChannel(); }
+
+    // Wire project select change → load personas
+    if (projectSelect) {
+      projectSelect.onchange = function () {
+        _loadPersonasForPicker(mode);
       };
     }
-    // Fetch available members
-    VoiceAPI.getAvailableMembers().then(function (data) {
-      _renderMemberCheckboxes(data.projects || data);
+
+    // Fetch projects
+    VoiceAPI.getProjects().then(function (data) {
+      var projects = data.projects || data || [];
+      var select = document.getElementById('channel-project-select');
+      if (!select) return;
+      select.innerHTML = '<option value="">Select project...</option>';
+      for (var i = 0; i < projects.length; i++) {
+        var p = projects[i];
+        var opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        select.appendChild(opt);
+      }
     }).catch(function () {
-      var list = document.getElementById('channel-member-list');
-      if (list) list.innerHTML = '<div class="channel-picker-empty">Could not load members</div>';
+      var select = document.getElementById('channel-project-select');
+      if (select) select.innerHTML = '<option value="">Could not load projects</option>';
     });
+  }
+
+  function _loadPersonasForPicker(mode) {
+    var personaList = document.getElementById('channel-persona-list');
+    if (personaList) personaList.innerHTML = '<div class="channel-picker-empty">Loading...</div>';
+    VoiceAPI.getActivePersonas().then(function (data) {
+      var personas = data.personas || data || [];
+      _renderPersonaCheckboxes(personas, mode !== 'add-member');
+    }).catch(function () {
+      if (personaList) personaList.innerHTML = '<div class="channel-picker-empty">Could not load personas</div>';
+    });
+  }
+
+  function _renderPersonaCheckboxes(personas, multiSelect) {
+    if (multiSelect === undefined) multiSelect = true;
+    var list = document.getElementById('channel-persona-list');
+    if (!list) return;
+
+    if (!personas || personas.length === 0) {
+      list.innerHTML = '<div class="channel-picker-empty">No active personas found</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < personas.length; i++) {
+      var p = personas[i];
+      var inputType = multiSelect ? 'checkbox' : 'radio';
+      var name = p.name || p.slug || 'Unknown';
+      var role = (p.role && p.role.name) || p.role_name || '';
+      html += '<label class="channel-persona-option">'
+        + '<input type="' + inputType + '" name="channel-persona-pick" value="' + _esc(p.slug) + '">'
+        + '<span>'
+        + _esc(name)
+        + (role ? ' <span class="channel-persona-role">' + _esc(role) + '</span>' : '')
+        + '</span>'
+        + '</label>';
+    }
+    list.innerHTML = html;
+
+    // Wire checkboxes to update CTA label (create mode only)
+    if (multiSelect) {
+      list.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+        cb.addEventListener('change', _updateCreateCtaLabel);
+      });
+    }
+  }
+
+  function _updateCreateCtaLabel() {
+    var checked = document.querySelectorAll('#channel-persona-list input[type="checkbox"]:checked');
+    var btn = document.getElementById('channel-create-submit');
+    if (btn) btn.textContent = 'Create Channel (' + checked.length + ' selected)';
   }
 
   function closeChannelPicker() {
@@ -1055,78 +1138,66 @@ window.VoiceSidebar = (function () {
     if (pk) pk.classList.remove('open');
   }
 
-  function _renderMemberCheckboxes(projects) {
-    var list = document.getElementById('channel-member-list');
-    if (!list) return;
-
-    // projects can be an array of { project_name, agents: [{agent_id, persona_name, persona_slug}] }
-    // or a flat array of agents
-    if (!projects || (Array.isArray(projects) && projects.length === 0)) {
-      list.innerHTML = '<div class="channel-picker-empty">No agents available</div>';
-      return;
-    }
-
-    var html = '';
-    if (Array.isArray(projects) && projects[0] && projects[0].project_name) {
-      // Grouped by project
-      for (var pi = 0; pi < projects.length; pi++) {
-        var proj = projects[pi];
-        var agents = proj.agents || [];
-        if (agents.length === 0) continue;
-        html += '<div class="channel-member-project">' + _esc(proj.project_name) + '</div>';
-        for (var ai = 0; ai < agents.length; ai++) {
-          var a = agents[ai];
-          var label = a.persona_name || ('Agent #' + a.agent_id);
-          var role = a.persona_role || '';
-          html += '<label class="channel-member-option">'
-            + '<input type="checkbox" value="' + a.agent_id + '">'
-            + '<span class="channel-member-label">' + _esc(label)
-            + (role ? ' <span class="channel-member-role">' + _esc(role) + '</span>' : '')
-            + '</span></label>';
-        }
-      }
-    } else if (Array.isArray(projects)) {
-      // Flat array
-      for (var fi = 0; fi < projects.length; fi++) {
-        var f = projects[fi];
-        var fLabel = f.persona_name || f.name || ('Agent #' + f.agent_id);
-        html += '<label class="channel-member-option">'
-          + '<input type="checkbox" value="' + (f.agent_id || f.id) + '">'
-          + '<span class="channel-member-label">' + _esc(fLabel) + '</span></label>';
-      }
-    }
-
-    list.innerHTML = html || '<div class="channel-picker-empty">No agents available</div>';
-  }
-
   function _submitCreateChannel() {
-    var nameInput = document.getElementById('channel-name-input');
+    var pk = document.getElementById('channel-picker');
+    var mode = pk ? pk.getAttribute('data-mode') : 'create';
+    var projectSelect = document.getElementById('channel-project-select');
     var typeSelect = document.getElementById('channel-type-select');
-    var name = nameInput ? nameInput.value.trim() : '';
+    var projectId = projectSelect ? parseInt(projectSelect.value, 10) : NaN;
     var channelType = typeSelect ? typeSelect.value : 'workshop';
 
-    if (!name) {
-      if (nameInput) nameInput.focus();
+    if (!projectSelect || !projectSelect.value) {
+      showToast('Please select a project');
       return;
     }
 
-    // Collect checked members
-    var checkboxes = document.querySelectorAll('#channel-member-list input[type="checkbox"]:checked');
-    var members = [];
+    if (mode === 'add-member') {
+      // Single-select radio for add-member
+      var radioChecked = document.querySelector('#channel-persona-list input[type="radio"]:checked');
+      if (!radioChecked) {
+        showToast('Please select a persona to add');
+        return;
+      }
+      var personaSlug = radioChecked.value;
+      var slug = VoiceState.addMemberTargetSlug;
+      if (!slug) {
+        showToast('No channel selected');
+        return;
+      }
+      var submitBtn = document.getElementById('channel-create-submit');
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Adding...'; }
+      VoiceAPI.addChannelMember(slug, personaSlug, projectId).then(function () {
+        closeChannelPicker();
+        showToast('Member added');
+        refreshAgents();
+      }).catch(function (err) {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Add to Channel'; }
+        showToast('Failed: ' + ((err && err.error && err.error.message) || err.error || 'unknown error'));
+      });
+      return;
+    }
+
+    // Create mode: multi-select checkboxes
+    var checkboxes = document.querySelectorAll('#channel-persona-list input[type="checkbox"]:checked');
+    if (checkboxes.length === 0) {
+      showToast('Please select at least one persona');
+      return;
+    }
+    var personaSlugs = [];
     for (var i = 0; i < checkboxes.length; i++) {
-      members.push(parseInt(checkboxes[i].value, 10));
+      personaSlugs.push(checkboxes[i].value);
     }
 
     var submitBtn = document.getElementById('channel-create-submit');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Creating...'; }
 
-    VoiceAPI.createChannel(name, channelType, members).then(function () {
+    VoiceAPI.createChannel(projectId, channelType, personaSlugs).then(function () {
       closeChannelPicker();
       showToast('Channel created');
       refreshAgents();
     }).catch(function (err) {
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create'; }
-      showToast('Failed: ' + (err.error || 'unknown error'));
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create Channel (' + personaSlugs.length + ' selected)'; }
+      showToast('Failed: ' + ((err && err.error && err.error.message) || err.error || 'unknown error'));
     });
   }
 

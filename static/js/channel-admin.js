@@ -615,6 +615,20 @@
                 }
             }
         });
+
+        global.sseClient.on('channel_member_connected', function(data) {
+            if (global.ChannelChat && data) {
+                global.ChannelChat.onMemberConnected(data);
+            }
+        });
+
+        global.sseClient.on('channel_ready', function(data) {
+            if (global.ChannelChat && data) {
+                global.ChannelChat.onChannelReady(data);
+            }
+            // Refresh channel list to reflect active status
+            _fetchChannels();
+        });
     }
 
     // ── Helpers ──────────────────────────────────────────────────

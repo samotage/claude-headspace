@@ -71,29 +71,105 @@
             createView.classList.remove('hidden');
             listView.classList.add('hidden');
 
-            // Init member autocomplete when switching to create tab
-            var acEl = document.getElementById('channel-member-autocomplete');
-            if (acEl && global.MemberAutocomplete) {
-                global.MemberAutocomplete.init(acEl);
-            }
+            // Load projects for the project picker
+            _loadProjectsForCreateForm();
         }
     }
 
     /**
-     * Create a new channel from the form data.
+     * Load projects into the #channel-create-project select.
+     */
+    function _loadProjectsForCreateForm() {
+        var projectEl = document.getElementById('channel-create-project');
+        if (!projectEl) return;
+        projectEl.innerHTML = '<option value="">Loading projects...</option>';
+
+        fetch('/api/projects')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var projects = data.projects || data || [];
+                projectEl.innerHTML = '<option value="">Select project...</option>';
+                for (var i = 0; i < projects.length; i++) {
+                    var opt = document.createElement('option');
+                    opt.value = projects[i].id;
+                    opt.textContent = projects[i].name;
+                    projectEl.appendChild(opt);
+                }
+            })
+            .catch(function() {
+                projectEl.innerHTML = '<option value="">Could not load projects</option>';
+            });
+
+        // Wire project change to persona list loader
+        projectEl.onchange = function() {
+            _loadPersonasForCreateForm();
+        };
+    }
+
+    /**
+     * Load active personas into #channel-create-persona-list.
+     */
+    function _loadPersonasForCreateForm() {
+        var listEl = document.getElementById('channel-create-persona-list');
+        if (!listEl) return;
+        listEl.innerHTML = '<div class="text-muted text-xs italic p-3">Loading personas...</div>';
+
+        fetch('/api/personas/active')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var personas = data.personas || data || [];
+                if (!personas.length) {
+                    listEl.innerHTML = '<div class="text-muted text-xs italic p-3">No active personas found</div>';
+                    return;
+                }
+                var html = '';
+                for (var i = 0; i < personas.length; i++) {
+                    var p = personas[i];
+                    var name = _escapeHtml(p.name || p.slug || 'Unknown');
+                    var role = p.role_name || (p.role && p.role.name) || '';
+                    html += '<label class="flex items-center gap-2 px-3 py-1.5 hover:bg-hover cursor-pointer">'
+                        + '<input type="checkbox" name="channel-create-persona" value="' + _escapeHtml(p.slug) + '" class="flex-shrink-0">'
+                        + '<span class="text-sm">' + name
+                        + (role ? ' <span class="text-xs text-muted">(' + _escapeHtml(role) + ')</span>' : '')
+                        + '</span>'
+                        + '</label>';
+                }
+                listEl.innerHTML = html;
+
+                // Wire checkboxes to update submit button label
+                listEl.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+                    cb.addEventListener('change', _updateCreateSubmitLabel);
+                });
+            })
+            .catch(function() {
+                listEl.innerHTML = '<div class="text-muted text-xs italic p-3">Could not load personas</div>';
+            });
+    }
+
+    function _updateCreateSubmitLabel() {
+        var checked = document.querySelectorAll('#channel-create-persona-list input[type="checkbox"]:checked');
+        var btn = document.getElementById('channel-create-submit-btn');
+        if (btn) {
+            btn.textContent = checked.length > 0
+                ? 'Create Channel (' + checked.length + ' selected)'
+                : 'Create Channel';
+        }
+    }
+
+    /**
+     * Create a new channel from the form data (S11 persona-based path).
      */
     function createChannel() {
-        var nameEl = document.getElementById('channel-create-name');
+        var projectEl = document.getElementById('channel-create-project');
         var typeEl = document.getElementById('channel-create-type');
-        var descEl = document.getElementById('channel-create-description');
         var statusEl = document.getElementById('channel-create-status');
         var submitBtn = document.getElementById('channel-create-submit-btn');
 
-        var name = nameEl ? nameEl.value.trim() : '';
+        var projectId = projectEl ? parseInt(projectEl.value, 10) : NaN;
         var channelType = typeEl ? typeEl.value : '';
 
-        if (!name) {
-            if (statusEl) statusEl.textContent = 'Name is required';
+        if (!projectEl || !projectEl.value) {
+            if (statusEl) statusEl.textContent = 'Project is required';
             return;
         }
         if (!channelType) {
@@ -101,29 +177,24 @@
             return;
         }
 
-        var payload = {
-            name: name,
-            channel_type: channelType,
-        };
-
-        var desc = descEl ? descEl.value.trim() : '';
-        if (desc) payload.description = desc;
-
-        // Use autocomplete agent IDs and persona slugs, or fallback to slug text input
-        if (global.MemberAutocomplete) {
-            var agentIds = global.MemberAutocomplete.getSelectedAgentIds();
-            var personaSlugs = global.MemberAutocomplete.getSelectedPersonaSlugs();
-            if (agentIds.length) {
-                payload.member_agents = agentIds;
-            }
-            if (personaSlugs.length) {
-                payload.members = (payload.members || []).concat(personaSlugs);
-            }
-            if (!agentIds.length && !personaSlugs.length) {
-                var fallbackMembers = global.MemberAutocomplete.getFallbackMembers();
-                if (fallbackMembers) payload.members = fallbackMembers;
-            }
+        var checkedPersonas = document.querySelectorAll(
+            '#channel-create-persona-list input[type="checkbox"]:checked'
+        );
+        if (!checkedPersonas.length) {
+            if (statusEl) statusEl.textContent = 'Select at least one persona';
+            return;
         }
+
+        var personaSlugs = [];
+        for (var i = 0; i < checkedPersonas.length; i++) {
+            personaSlugs.push(checkedPersonas[i].value);
+        }
+
+        var payload = {
+            project_id: projectId,
+            channel_type: channelType,
+            persona_slugs: personaSlugs,
+        };
 
         if (submitBtn) submitBtn.disabled = true;
         if (statusEl) statusEl.textContent = 'Creating...';
@@ -145,12 +216,6 @@
         .then(function(channel) {
             if (statusEl) statusEl.textContent = 'Created!';
 
-            // Clear form
-            if (nameEl) nameEl.value = '';
-            if (typeEl) typeEl.value = '';
-            if (descEl) descEl.value = '';
-            if (global.MemberAutocomplete) global.MemberAutocomplete.reset();
-
             // Add card to dashboard
             if (global.ChannelCards) {
                 global.ChannelCards.addCard({
@@ -164,7 +229,7 @@
 
             // Toast
             if (global.Toast) {
-                global.Toast.success('Channel Created', 'Channel "' + channel.name + '" created successfully');
+                global.Toast.success('Channel Created', 'Channel "' + channel.name + '" created — waiting for agents to connect');
             }
 
             // Switch back to list and reload

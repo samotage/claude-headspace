@@ -13,7 +13,7 @@ Work in this sequence to minimise integration friction:
 
 ## Phase 1: Backend — Service Layer
 
-### TASK-01: Extend `_spin_up_agent_for_persona` to accept `project_id`
+### [x] TASK-01: Extend `_spin_up_agent_for_persona` to accept `project_id`
 
 **File:** `src/claude_headspace/services/channel_service.py`
 
@@ -35,7 +35,7 @@ Update all callers to pass `project_id`:
 - `add_member()` — gets project_id from the membership's channel's project_id (or new `project_id` parameter)
 - `promote_to_group()` — already passes project context; update call site
 
-### TASK-02: Add `create_channel_from_personas()` to `ChannelService`
+### [x] TASK-02: Add `create_channel_from_personas()` to `ChannelService`
 
 **File:** `src/claude_headspace/services/channel_service.py`
 
@@ -62,7 +62,7 @@ Steps:
 
 New exception class: `ProjectNotFoundError(ChannelError)` — add alongside existing error classes at top of file.
 
-### TASK-03: Add `link_agent_to_pending_membership()` to `ChannelService`
+### [x] TASK-03: Add `link_agent_to_pending_membership()` to `ChannelService`
 
 **File:** `src/claude_headspace/services/channel_service.py`
 
@@ -78,7 +78,7 @@ Steps:
 4. Call `check_channel_ready(membership.channel_id)`
 5. Log result
 
-### TASK-04: Add `check_channel_ready()` to `ChannelService`
+### [x] TASK-04: Add `check_channel_ready()` to `ChannelService`
 
 **File:** `src/claude_headspace/services/channel_service.py`
 
@@ -123,7 +123,7 @@ broadcaster.broadcast({"event": "channel_member_connected", ...})
 broadcaster.broadcast({"event": "channel_ready", ...})
 ```
 
-### TASK-05: Extend `add_member()` to accept `project_id`
+### [x] TASK-05: Extend `add_member()` to accept `project_id`
 
 **File:** `src/claude_headspace/services/channel_service.py`
 
@@ -150,7 +150,7 @@ def add_member(
 
 ## Phase 2: Backend — Hook Receiver Integration
 
-### TASK-06: Hook receiver calls `link_agent_to_pending_membership` on session-start
+### [x] TASK-06: Hook receiver calls `link_agent_to_pending_membership` on session-start
 
 **File:** `src/claude_headspace/services/hook_receiver.py` (or `hook_agent_state.py`)
 
@@ -167,7 +167,7 @@ Locate the right insertion point: after `session_correlator` resolves/creates th
 
 ## Phase 3: Backend — API Layer
 
-### TASK-07: Add `POST /api/channels` new persona-based creation path
+### [x] TASK-07: Add `POST /api/channels` new persona-based creation path
 
 **File:** `src/claude_headspace/routes/channels_api.py`
 
@@ -190,7 +190,7 @@ Add `ProjectNotFoundError` to `_ERROR_MAP`:
 ProjectNotFoundError: (404, "project_not_found"),
 ```
 
-### TASK-08: Extend `POST /api/channels/<slug>/members` with `project_id`
+### [x] TASK-08: Extend `POST /api/channels/<slug>/members` with `project_id`
 
 **File:** `src/claude_headspace/routes/channels_api.py`
 
@@ -212,7 +212,7 @@ membership = service.add_member(
 
 ## Phase 4: Voice App Frontend
 
-### TASK-09: Redesign `#channel-picker` HTML in `voice.html`
+### [x] TASK-09: Redesign `#channel-picker` HTML in `voice.html`
 
 **File:** `static/voice/voice.html`
 
@@ -229,7 +229,7 @@ Shared bottom sheet (add-member mode):
 - The same `#channel-picker` / `#channel-picker-backdrop` elements are reused
 - A `data-mode` attribute on `#channel-picker` (value: `create` or `add-member`) controls CTA label and persona select multiplicity
 
-### TASK-10: Rewrite `openChannelPicker()` and `_submitCreateChannel()` in `voice-sidebar.js`
+### [x] TASK-10: Rewrite `openChannelPicker()` and `_submitCreateChannel()` in `voice-sidebar.js`
 
 **File:** `static/voice/voice-sidebar.js`
 
@@ -254,7 +254,7 @@ Note: `/api/personas/active` returns all active personas regardless of project. 
 - Check mode: `create` → `VoiceAPI.createChannel(projectId, channelType, personaSlugs)` → close picker
 - Check mode: `add-member` → `VoiceAPI.addChannelMember(currentSlug, personaSlug, projectId)` → close picker
 
-### TASK-11: Wire add-member action in `voice-channel-chat.js`
+### [x] TASK-11: Wire add-member action in `voice-channel-chat.js`
 
 **File:** `static/voice/voice-channel-chat.js`
 
@@ -314,7 +314,7 @@ case 'channel_ready':
     break;
 ```
 
-### TASK-12: Update `VoiceAPI.createChannel` and add `addChannelMember` in `voice-api.js`
+### [x] TASK-12: Update `VoiceAPI.createChannel` and add `addChannelMember` in `voice-api.js`
 
 **File:** `static/voice/voice-api.js`
 
@@ -340,7 +340,7 @@ function addChannelMember(slug, personaSlug, projectId) {
 
 Expose `addChannelMember` in the return object.
 
-### TASK-13: Register `channel_member_connected` and `channel_ready` in `voice-sse-handler.js`
+### [x] TASK-13: Register `channel_member_connected` and `channel_ready` in `voice-sse-handler.js`
 
 **File:** `static/voice/voice-sse-handler.js`
 
@@ -360,7 +360,7 @@ case 'channel_ready':
 
 Also register these event type strings in any event type whitelist.
 
-### TASK-14: Add styles in `voice.css`
+### [x] TASK-14: Add styles in `voice.css`
 
 **File:** `static/voice/voice.css`
 
@@ -425,7 +425,7 @@ Also register these event type strings in any event type whitelist.
 
 ## Phase 5: Dashboard Frontend
 
-### TASK-15: Redesign `_channel_management.html` Create view
+### [x] TASK-15: Redesign `_channel_management.html` Create view
 
 **File:** `templates/partials/_channel_management.html`
 
@@ -441,7 +441,7 @@ Replace the Create view content:
 Also add an Add Member panel to `_channel_management.html` (or handle inline in `_channel_chat_panel.html`):
 - The existing `#channel-chat-add-member` section in `_channel_chat_panel.html` contains `#channel-chat-add-member-picker` div — wire this to show a project + persona single-select form populated by JS.
 
-### TASK-16: Wire `channel-admin.js` to new creation flow
+### [x] TASK-16: Wire `channel-admin.js` to new creation flow
 
 **File:** `static/js/channel-admin.js`
 
@@ -458,7 +458,7 @@ On tab switch to "Create New":
 2. On project change: fetch `/api/personas/active` → render persona checkboxes in `#channel-create-persona-list`
 3. On persona checkbox change: update submit button text with count
 
-### TASK-17: Wire `#channel-chat-add-member` in dashboard channel chat
+### [x] TASK-17: Wire `#channel-chat-add-member` in dashboard channel chat
 
 **File:** `static/js/channel-admin.js` (or new `static/js/channel-chat.js` depending on where add-member lives)
 
@@ -468,7 +468,7 @@ In the existing `ChannelChat.toggleAddMember()` flow:
 3. On submit: POST `{persona_slug, project_id}` to `POST /api/channels/<slug>/members`
 4. On success: close add-member panel, show toast
 
-### TASK-18: Register `channel_member_connected` and `channel_ready` SSE in dashboard
+### [x] TASK-18: Register `channel_member_connected` and `channel_ready` SSE in dashboard
 
 **File:** `static/js/channel-admin.js` (where SSE client events are bound)
 
@@ -484,7 +484,7 @@ global.sseClient.on('channel_ready', function(data) {
 
 Also register in `static/js/sse-client.js` event type whitelist (around line 267).
 
-### TASK-19: Update `#channel-chat-member-pills` population in dashboard
+### [x] TASK-19: Update `#channel-chat-member-pills` population in dashboard
 
 **File:** `static/js/channel-admin.js` (wherever member pills are currently populated)
 
@@ -500,7 +500,7 @@ Add `ChannelChat.onChannelReady(data)`:
 
 ## Phase 6: Add Custom CSS if Needed
 
-### TASK-20: Dashboard custom CSS for pending pill state (if needed)
+### [x] TASK-20: Dashboard custom CSS for pending pill state (if needed)
 
 **File:** `static/css/src/input.css`
 
@@ -515,7 +515,7 @@ npx tailwindcss -i static/css/src/input.css -o static/css/main.css
 
 ## Phase 7: Tests
 
-### TASK-21: Service unit tests
+### [x] TASK-21: Service unit tests
 
 **File:** `tests/services/test_channel_service_s11.py` (new)
 
@@ -525,7 +525,7 @@ Test:
 - `check_channel_ready()`: transitions to active when all linked; broadcasts channel_ready
 - `_spin_up_agent_for_persona()` with project_id: no longer reuses existing agents
 
-### TASK-22: Route tests
+### [x] TASK-22: Route tests
 
 **File:** `tests/routes/test_channels_api_s11.py` (new)
 
