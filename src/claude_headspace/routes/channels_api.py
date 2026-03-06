@@ -274,7 +274,7 @@ def _membership_to_dict(membership) -> dict:
         "left_at": membership.left_at.isoformat() if membership.left_at else None,
     }
 
-    # Include agent command state when an agent is connected
+    # Include agent command state and tmux info when an agent is connected
     if membership.agent_id and membership.agent:
         try:
             from ..models.command import CommandState
@@ -291,6 +291,10 @@ def _membership_to_dict(membership) -> dict:
                 d["agent_state_label"] = info.get("label", "")
         except Exception:
             pass
+        # Include tmux availability for click-to-focus
+        d["has_tmux"] = bool(
+            getattr(membership.agent, "tmux_pane_id", None)
+        )
 
     return d
 

@@ -741,10 +741,18 @@
                     btn.title = m.agent_state_label ? name + ' — ' + m.agent_state_label : 'Focus ' + name;
                     btn.setAttribute('data-agent-id', m.agent_id);
                     btn.setAttribute('data-agent-state', m.agent_state || '');
+                    btn.setAttribute('data-has-tmux', m.has_tmux ? 'true' : 'false');
                     btn.setAttribute('data-persona-slug', m.persona_slug || '');
-                    (function(agentId, pillBtn) {
+                    (function(agentId, pillBtn, hasTmux) {
                         pillBtn.addEventListener('click', function() {
-                            if (window.FocusAPI) {
+                            if (hasTmux && window.FocusAPI && window.FocusAPI.attachAgent) {
+                                window.FocusAPI.attachAgent(agentId).then(function(ok) {
+                                    if (ok) {
+                                        pillBtn.classList.add('focus-highlight');
+                                        setTimeout(function() { pillBtn.classList.remove('focus-highlight'); }, 1200);
+                                    }
+                                });
+                            } else if (window.FocusAPI) {
                                 window.FocusAPI.focusAgent(agentId).then(function(ok) {
                                     if (ok) {
                                         pillBtn.classList.add('focus-highlight');
@@ -753,7 +761,7 @@
                                 });
                             }
                         });
-                    })(m.agent_id, btn);
+                    })(m.agent_id, btn, m.has_tmux);
                     _memberPillsEl.appendChild(btn);
                 } else {
                     // Pending member — visual indicator
@@ -800,9 +808,17 @@
             btn.title = data.agent_state_label ? name + ' — ' + data.agent_state_label : 'Focus ' + name;
             btn.setAttribute('data-agent-id', agentId);
             btn.setAttribute('data-agent-state', data.agent_state || '');
+            btn.setAttribute('data-has-tmux', data.has_tmux ? 'true' : 'false');
             btn.setAttribute('data-persona-slug', personaSlug);
             btn.addEventListener('click', function() {
-                if (window.FocusAPI) {
+                if (data.has_tmux && window.FocusAPI && window.FocusAPI.attachAgent) {
+                    window.FocusAPI.attachAgent(agentId).then(function(ok) {
+                        if (ok) {
+                            btn.classList.add('focus-highlight');
+                            setTimeout(function() { btn.classList.remove('focus-highlight'); }, 1200);
+                        }
+                    });
+                } else if (window.FocusAPI) {
                     window.FocusAPI.focusAgent(agentId).then(function(ok) {
                         if (ok) {
                             btn.classList.add('focus-highlight');

@@ -565,7 +565,8 @@ window.VoiceChannelChat = (function () {
         var sc = _stateClass(m.agent_state);
         var tip = m.agent_state_label ? _esc(name) + ' — ' + _esc(m.agent_state_label) : 'Focus ' + _esc(name);
         html += '<button class="channel-member-pill' + sc + '" data-agent-id="' + m.agent_id
-          + '" data-agent-state="' + _esc(m.agent_state || '') + '" title="' + tip + '">'
+          + '" data-agent-state="' + _esc(m.agent_state || '')
+          + '" data-has-tmux="' + (m.has_tmux ? 'true' : 'false') + '" title="' + tip + '">'
           + _esc(name) + '</button>';
       }
     }
@@ -573,11 +574,13 @@ window.VoiceChannelChat = (function () {
       html += '<span class="channel-member-count">' + connected + ' of ' + total + ' online</span>';
     }
     container.innerHTML = html;
-    // Bind focus clicks with feedback
+    // Bind focus clicks — use attachAgent (tmux) when available, else focusAgent (iTerm)
     container.querySelectorAll('.channel-member-pill[data-agent-id]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var agentId = parseInt(btn.getAttribute('data-agent-id'), 10);
-        VoiceAPI.focusAgent(agentId).then(function () {
+        var hasTmux = btn.getAttribute('data-has-tmux') === 'true';
+        var apiFn = hasTmux ? VoiceAPI.attachAgent : VoiceAPI.focusAgent;
+        apiFn(agentId).then(function () {
           btn.classList.add('focus-highlight');
           setTimeout(function () { btn.classList.remove('focus-highlight'); }, 1200);
         }).catch(function () {});
@@ -617,10 +620,12 @@ window.VoiceChannelChat = (function () {
       newBtn.className = 'channel-member-pill' + sc;
       newBtn.setAttribute('data-agent-id', data.agent_id);
       newBtn.setAttribute('data-agent-state', data.agent_state || '');
+      newBtn.setAttribute('data-has-tmux', data.has_tmux ? 'true' : 'false');
       newBtn.title = data.agent_state_label ? name + ' — ' + data.agent_state_label : 'Focus ' + name;
       newBtn.textContent = name;
       newBtn.addEventListener('click', function () {
-        VoiceAPI.focusAgent(parseInt(data.agent_id, 10)).then(function () {
+        var apiFn = data.has_tmux ? VoiceAPI.attachAgent : VoiceAPI.focusAgent;
+        apiFn(parseInt(data.agent_id, 10)).then(function () {
           newBtn.classList.add('focus-highlight');
           setTimeout(function () { newBtn.classList.remove('focus-highlight'); }, 1200);
         }).catch(function () {});

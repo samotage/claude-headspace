@@ -2415,28 +2415,30 @@ body::after {
 /* S11: clickable connected pill */
 button.channel-chat-member-pill {
     cursor: pointer;
-    transition: opacity 0.15s, border-color 0.2s, background 0.2s, box-shadow 0.3s;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
+    transition: background 0.3s, color 0.3s, box-shadow 0.3s;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    background: rgba(106, 106, 120, 0.15);
+    border: none;
+    color: var(--text-muted);
 }
 button.channel-chat-member-pill:hover {
-    opacity: 0.75;
-    border-color: var(--cyan);
-    color: var(--text-primary);
+    filter: brightness(1.2);
 }
 button.channel-chat-member-pill.focus-highlight {
-    box-shadow: 0 0 12px rgba(86,212,221,0.3), 0 0 30px rgba(86,212,221,0.1);
-    border-color: rgba(86,212,221,0.5);
+    box-shadow: 0 0 12px rgba(86,212,221,0.4), 0 0 24px rgba(86,212,221,0.15);
 }
 
-/* S12: agent state pill colours */
-.channel-pill-processing { border-color: var(--blue); background: rgba(115, 153, 224, 0.12); }
-.channel-pill-awaiting-input { border-color: var(--amber); background: rgba(224, 176, 115, 0.12); }
-.channel-pill-commanded { border-color: var(--amber); background: rgba(224, 176, 115, 0.06); }
-.channel-pill-complete { border-color: var(--green); background: rgba(115, 224, 160, 0.12); }
-.channel-pill-idle { border-color: var(--border); }
-.channel-pill-timed-out { border-color: var(--red); background: rgba(224, 115, 115, 0.12); }
+/* S12: state-filled pills */
+.channel-pill-processing { background: rgba(115, 153, 224, 0.18); color: var(--blue); }
+.channel-pill-awaiting-input { background: rgba(224, 176, 115, 0.18); color: var(--amber); }
+.channel-pill-commanded { background: rgba(224, 176, 115, 0.12); color: var(--amber); }
+.channel-pill-complete { background: rgba(115, 224, 160, 0.18); color: var(--green); }
+.channel-pill-idle { background: rgba(106, 106, 120, 0.15); color: var(--text-muted); }
+.channel-pill-timed-out { background: rgba(224, 115, 115, 0.18); color: var(--red); }
 
 /* S11: pending pill (agent not yet connected) */
 .channel-member-pill-pending {
