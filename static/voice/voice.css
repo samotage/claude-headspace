@@ -3341,21 +3341,36 @@ body.layout-split .hamburger-btn { display: none; }
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
-  background: var(--color-cyan, #00bcd4);
-  color: var(--color-void, #0a0a0a);
-  border: none;
+  background: var(--color-surface, #1a1a1a);
+  color: var(--color-text-secondary, #ccc);
+  border: 1px solid var(--color-border, #333);
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, border-color 0.2s, background 0.2s, box-shadow 0.3s;
 }
 
 .channel-member-pill:hover {
   opacity: 0.85;
+  border-color: var(--color-cyan, #00bcd4);
+  color: var(--color-text, #eee);
 }
+
+.channel-member-pill.focus-highlight {
+  box-shadow: 0 0 12px rgba(86,212,221,0.3), 0 0 30px rgba(86,212,221,0.1);
+  border-color: rgba(86,212,221,0.5);
+}
+
+/* S12: agent state pill colours */
+.channel-member-pill.state-processing { border-color: var(--color-blue, #7399e0); background: rgba(115, 153, 224, 0.12); }
+.channel-member-pill.state-awaiting-input { border-color: var(--color-amber, #e0b073); background: rgba(224, 176, 115, 0.12); }
+.channel-member-pill.state-commanded { border-color: var(--color-amber, #e0b073); background: rgba(224, 176, 115, 0.06); }
+.channel-member-pill.state-complete { border-color: var(--color-green, #73e0a0); background: rgba(115, 224, 160, 0.12); }
+.channel-member-pill.state-idle { border-color: var(--color-border, #333); }
+.channel-member-pill.state-timed-out { border-color: var(--color-red, #e07373); background: rgba(224, 115, 115, 0.12); }
 
 .channel-member-pill.pending {
   background: var(--color-surface, #1a1a1a);
   color: var(--color-muted, #888);
-  border: 1px solid var(--color-border, #333);
+  border: 1px dashed var(--color-border, #333);
   cursor: default;
   opacity: 0.7;
 }

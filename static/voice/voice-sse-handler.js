@@ -257,6 +257,11 @@ window.VoiceSSEHandler = (function () {
       }
     }
 
+    // S12: update channel member pill state colours
+    if (VoiceState.currentChannelSlug && typeof VoiceChannelChat !== 'undefined' && VoiceChannelChat.onCardRefresh) {
+      VoiceChannelChat.onCardRefresh(data);
+    }
+
     // Sync state to chat if this is the target agent
     if (VoiceState.currentScreen === 'chat' && VoiceState.targetAgentId) {
       var updateAgentId = data.agent_id || data.id;

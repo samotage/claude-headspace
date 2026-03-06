@@ -541,6 +541,11 @@ window.VoiceChannelChat = (function () {
 
   // --- Member pills ---
 
+  function _stateClass(agentState) {
+    if (!agentState) return '';
+    return ' state-' + agentState.toLowerCase().replace(/_/g, '-');
+  }
+
   function _renderMemberPills(memberships) {
     var container = document.getElementById('channel-chat-member-pills');
     if (!container) return;
@@ -557,8 +562,10 @@ window.VoiceChannelChat = (function () {
         html += '<span class="channel-member-pill pending" title="' + _esc(name) + ' (connecting...)">'
           + _esc(name) + '</span>';
       } else {
-        html += '<button class="channel-member-pill" data-agent-id="' + m.agent_id
-          + '" title="Focus ' + _esc(name) + '">'
+        var sc = _stateClass(m.agent_state);
+        var tip = m.agent_state_label ? _esc(name) + ' — ' + _esc(m.agent_state_label) : 'Focus ' + _esc(name);
+        html += '<button class="channel-member-pill' + sc + '" data-agent-id="' + m.agent_id
+          + '" data-agent-state="' + _esc(m.agent_state || '') + '" title="' + tip + '">'
           + _esc(name) + '</button>';
       }
     }
@@ -566,10 +573,14 @@ window.VoiceChannelChat = (function () {
       html += '<span class="channel-member-count">' + connected + ' of ' + total + ' online</span>';
     }
     container.innerHTML = html;
-    // Bind focus clicks
+    // Bind focus clicks with feedback
     container.querySelectorAll('.channel-member-pill[data-agent-id]').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        VoiceAPI.focusAgent(parseInt(btn.getAttribute('data-agent-id'), 10));
+        var agentId = parseInt(btn.getAttribute('data-agent-id'), 10);
+        VoiceAPI.focusAgent(agentId).then(function () {
+          btn.classList.add('focus-highlight');
+          setTimeout(function () { btn.classList.remove('focus-highlight'); }, 1200);
+        }).catch(function () {});
       });
     });
   }
@@ -601,13 +612,18 @@ window.VoiceChannelChat = (function () {
     }
     if (pendingPill && data.agent_id) {
       var name = data.persona_name || data.persona_slug;
+      var sc = _stateClass(data.agent_state);
       var newBtn = document.createElement('button');
-      newBtn.className = 'channel-member-pill';
+      newBtn.className = 'channel-member-pill' + sc;
       newBtn.setAttribute('data-agent-id', data.agent_id);
-      newBtn.title = 'Focus ' + name;
+      newBtn.setAttribute('data-agent-state', data.agent_state || '');
+      newBtn.title = data.agent_state_label ? name + ' — ' + data.agent_state_label : 'Focus ' + name;
       newBtn.textContent = name;
       newBtn.addEventListener('click', function () {
-        VoiceAPI.focusAgent(parseInt(data.agent_id, 10));
+        VoiceAPI.focusAgent(parseInt(data.agent_id, 10)).then(function () {
+          newBtn.classList.add('focus-highlight');
+          setTimeout(function () { newBtn.classList.remove('focus-highlight'); }, 1200);
+        }).catch(function () {});
       });
       pendingPill.parentNode.replaceChild(newBtn, pendingPill);
     }
@@ -628,6 +644,31 @@ window.VoiceChannelChat = (function () {
     if (sendBtn) sendBtn.disabled = false;
   }
 
+  /**
+   * Handle card_refresh SSE — update pill state colours live.
+   */
+  function onCardRefresh(data) {
+    if (!data) return;
+    var container = document.getElementById('channel-chat-member-pills');
+    if (!container) return;
+    var agentId = String(data.id);
+    var newState = data.state;
+    if (!agentId || !newState) return;
+
+    var pill = container.querySelector('.channel-member-pill[data-agent-id="' + agentId + '"]');
+    if (!pill) return;
+
+    // Strip old state-* classes, apply new one
+    var classes = pill.className.split(/\s+/).filter(function (c) { return c.indexOf('state-') !== 0; });
+    classes.push('state-' + newState.toLowerCase().replace(/_/g, '-'));
+    pill.className = classes.join(' ');
+    pill.setAttribute('data-agent-state', newState);
+
+    // Update tooltip
+    var stateLabel = data.state_label || newState.replace(/_/g, ' ').toLowerCase();
+    pill.title = pill.textContent.trim() + ' — ' + stateLabel;
+  }
+
   // --- Public API ---
 
   return {
@@ -638,6 +679,7 @@ window.VoiceChannelChat = (function () {
     showVoiceResult: showVoiceResult,
     openChannelChatKebab: openChannelChatKebab,
     onMemberConnected: onMemberConnected,
-    onChannelReady: onChannelReady
+    onChannelReady: onChannelReady,
+    onCardRefresh: onCardRefresh
   };
 })();
