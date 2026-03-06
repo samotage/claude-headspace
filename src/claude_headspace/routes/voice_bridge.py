@@ -2,7 +2,6 @@
 
 import logging
 import os
-import re
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -17,9 +16,7 @@ from flask import (
 
 from ..database import db
 from ..models.agent import Agent
-from ..models.channel import Channel
 from ..models.command import Command, CommandState
-from ..models.persona import Persona
 from ..models.turn import Turn, TurnActor, TurnIntent
 from ..services import tmux_bridge
 from ..services.agent_lifecycle import (
@@ -28,705 +25,28 @@ from ..services.agent_lifecycle import (
     shutdown_agent,
 )
 from ..services.card_state import broadcast_card_refresh
-from ..services.channel_service import ChannelError
+
+# ── Imports from extracted service modules ────────────────────────────
+from ..services.voice_channel_handlers import (  # noqa: F401
+    _handle_channel_intent,
+)
+from ..services.voice_channel_helpers import (  # noqa: F401
+    _channel_context,
+    _get_channel_context,
+    _resolve_channel_ref,
+    _set_channel_context,
+)
+from ..services.voice_channel_intent import (  # noqa: F401
+    _detect_channel_intent,
+    _extract_member_refs,
+    _infer_channel_type,
+)
+from ..services.voice_matchers import (  # noqa: F401
+    _match_channel,
+    _match_picker_option,
+)
 
 logger = logging.getLogger(__name__)
-
-
-# ── Channel intent detection patterns ────────────────────────────────
-# Checked in order; first match wins. Patterns use distinctive structural
-# markers (colon separators, question marks, "create ... channel") to avoid
-# false positives on regular agent commands.
-
-# 1. Send to channel
-_SEND_PATTERNS = [
-    re.compile(
-        r"(?:send|message|tell)\s+(?:to\s+)?(?:the\s+)?(.+?)\s+channel\s*:\s*(.+)",
-        re.I,
-    ),
-    re.compile(
-        r"(?:send|message|tell)\s+(?:to\s+)?(?:the\s+)?(.+?):\s*(.+)",
-        re.I,
-    ),
-]
-
-# 2. Channel history
-_HISTORY_PATTERNS = [
-    re.compile(
-        r"what(?:'s|s)\s+(?:happening|going\s+on)\s+in\s+(?:the\s+)?(.+?)(?:\s+channel)?\s*\??$",
-        re.I,
-    ),
-    re.compile(
-        r"show\s+(?:the\s+)?(.+?)(?:\s+channel)?\s+messages",
-        re.I,
-    ),
-    re.compile(
-        r"(?:channel\s+)?history\s+(?:for\s+)?(?:the\s+)?(.+?)(?:\s+channel)?$",
-        re.I,
-    ),
-]
-
-# 3. List channels
-_LIST_PATTERNS = [
-    re.compile(r"(?:list|show|my)\s+channels?$", re.I),
-    re.compile(
-        r"what\s+channels?\s+(?:am\s+I\s+in|do\s+I\s+have|are\s+there)\s*\??$",
-        re.I,
-    ),
-]
-
-# 4. Create channel (with optional members)
-_CREATE_PATTERNS = [
-    re.compile(
-        r"create\s+(?:a\s+)?(\w+)\s+channel\s+(?:called\s+|named\s+)?(.+?)"
-        r"(?:\s+with\s+(.+))?$",
-        re.I,
-    ),
-    re.compile(
-        r"create\s+(?:a\s+)?channel\s+(?:called\s+|named\s+)?(.+?)"
-        r"(?:\s+(?:as|type)\s+(\w+))?"
-        r"(?:\s+with\s+(.+))?$",
-        re.I,
-    ),
-]
-
-# 5. Add member
-_ADD_MEMBER_PATTERNS = [
-    re.compile(r"add\s+(\w+)\s+to\s+this\s+channel$", re.I),
-    re.compile(r"add\s+(\w+)\s+to\s+(?:the\s+)?(.+?)(?:\s+channel)?$", re.I),
-]
-
-# 6. Complete channel
-_COMPLETE_PATTERNS = [
-    re.compile(
-        r"(?:complete|finish|close|end)\s+(?:the\s+)?(.+?)(?:\s+channel)?$",
-        re.I,
-    ),
-]
-
-# Channel type keyword mapping
-_CHANNEL_TYPE_KEYWORDS = {
-    "workshop": "workshop",
-    "delegation": "delegation",
-    "delegate": "delegation",
-    "review": "review",
-    "standup": "standup",
-    "stand up": "standup",
-    "broadcast": "broadcast",
-    "announce": "broadcast",
-    "announcement": "broadcast",
-}
-
-# Module-level channel context cache
-# Key: auth identifier (token or "localhost"), Value: channel slug
-_channel_context: dict[str, str] = {}
-
-
-def _detect_channel_intent(text: str) -> dict | None:
-    """Detect if a voice utterance targets a channel operation.
-
-    Returns a dict with:
-      - action: "send" | "history" | "list" | "create" | "add_member" | "complete"
-      - channel_ref: extracted channel name/reference (may be "this channel")
-      - content: message content (for send action)
-      - channel_type: inferred type (for create action)
-      - member_ref: persona name reference (for add_member action)
-      - member_refs: list of persona name references (for create with members)
-    Returns None if the utterance is not channel-targeted.
-    """
-    # 1. Send patterns
-    for pat in _SEND_PATTERNS:
-        m = pat.match(text)
-        if m:
-            return {
-                "action": "send",
-                "channel_ref": m.group(1).strip(),
-                "content": m.group(2).strip(),
-            }
-
-    # 2. History patterns
-    for pat in _HISTORY_PATTERNS:
-        m = pat.match(text)
-        if m:
-            return {
-                "action": "history",
-                "channel_ref": m.group(1).strip(),
-            }
-
-    # 3. List patterns
-    for pat in _LIST_PATTERNS:
-        m = pat.match(text)
-        if m:
-            return {"action": "list"}
-
-    # 4. Create patterns
-    for pat in _CREATE_PATTERNS:
-        m = pat.match(text)
-        if m:
-            groups = m.groups()
-            if pat == _CREATE_PATTERNS[0]:
-                # Pattern 1: "create a [type] channel [called name] [with members]"
-                channel_type = groups[0].strip()
-                name = groups[1].strip()
-                members_text = groups[2]
-            else:
-                # Pattern 2: "create channel [called name] [as type] [with members]"
-                name = groups[0].strip()
-                channel_type = groups[1].strip() if groups[1] else None
-                members_text = groups[2]
-
-            inferred_type = _infer_channel_type(channel_type or text)
-            return {
-                "action": "create",
-                "name": name,
-                "channel_type": inferred_type,
-                "member_refs": _extract_member_refs(members_text)
-                if members_text
-                else [],
-            }
-
-    # 5. Add member patterns
-    for pat in _ADD_MEMBER_PATTERNS:
-        m = pat.match(text)
-        if m:
-            groups = m.groups()
-            if len(groups) == 1:
-                # "add X to this channel"
-                return {
-                    "action": "add_member",
-                    "member_ref": groups[0].strip(),
-                    "channel_ref": "this channel",
-                }
-            else:
-                return {
-                    "action": "add_member",
-                    "member_ref": groups[0].strip(),
-                    "channel_ref": groups[1].strip(),
-                }
-
-    # 6. Complete patterns
-    for pat in _COMPLETE_PATTERNS:
-        m = pat.match(text)
-        if m:
-            return {
-                "action": "complete",
-                "channel_ref": m.group(1).strip(),
-            }
-
-    return None
-
-
-def _fuzzy_match(ref_text: str, items: list, get_names: callable) -> dict:
-    """Fuzzy match a reference string against a list of items.
-
-    Shared matching logic used by both channel and persona matchers.
-
-    Args:
-        ref_text: The user's voice reference text
-        items: List of objects to match against
-        get_names: Callable(item) -> list[str] returning lowercase name
-            variants to match (e.g. [name, slug])
-
-    Returns:
-        {"match": item, "confidence": float} for single match
-        {"ambiguous": [item, ...]} for multiple matches
-        {"no_match": True} for no matches
-    """
-    ref = ref_text.strip().lower()
-    ref = re.sub(r"^(the|a|an)\s+", "", ref)
-    ref = ref.rstrip("?!.")
-
-    candidates = []
-    for item in items:
-        names = get_names(item)
-
-        # 1. Exact match on any name variant
-        if ref in names:
-            return {"match": item, "confidence": 1.0}
-
-        # 2. Substring match
-        matched_substring = False
-        for n in names:
-            if ref in n or n in ref:
-                candidates.append((item, 0.8))
-                matched_substring = True
-                break
-        if matched_substring:
-            continue
-
-        # 3. Token overlap
-        ref_tokens = set(ref.split())
-        all_tokens = set()
-        for n in names:
-            all_tokens |= set(n.replace("-", " ").split())
-
-        overlap = ref_tokens & all_tokens
-        if overlap and len(overlap) >= len(ref_tokens) * 0.5:
-            score = len(overlap) / max(len(ref_tokens), len(all_tokens))
-            candidates.append((item, score))
-
-    if not candidates:
-        return {"no_match": True}
-
-    candidates.sort(key=lambda x: x[1], reverse=True)
-
-    if len(candidates) == 1:
-        return {"match": candidates[0][0], "confidence": candidates[0][1]}
-
-    if candidates[0][1] - candidates[1][1] > 0.2:
-        return {"match": candidates[0][0], "confidence": candidates[0][1]}
-
-    ambiguous = [c[0] for c in candidates if c[1] >= candidates[0][1] - 0.1]
-    return {"ambiguous": ambiguous}
-
-
-def _match_channel(channel_ref: str, channels: list) -> dict:
-    """Fuzzy match a channel reference against active channels."""
-    return _fuzzy_match(
-        channel_ref,
-        channels,
-        lambda ch: [ch.name.lower(), ch.slug.lower()],
-    )
-
-
-def _set_channel_context(auth_id: str, channel_slug: str) -> None:
-    """Set the current channel context for this voice session."""
-    _channel_context[auth_id] = channel_slug
-
-
-def _get_channel_context(auth_id: str) -> str | None:
-    """Get the current channel context for this voice session."""
-    return _channel_context.get(auth_id)
-
-
-def _get_auth_id() -> str:
-    """Extract an auth identifier from the current request for context tracking.
-
-    Returns the Bearer token string if present, or "localhost" for
-    localhost-bypass authenticated requests (no token).
-    """
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        return auth_header[7:]
-    return "localhost"
-
-
-def _resolve_channel_ref(channel_ref: str, auth_id: str) -> str:
-    """Resolve 'this channel' / 'the channel' to actual channel slug.
-
-    Raises ValueError if context reference used but no context is set.
-    """
-    if channel_ref.strip().lower() in (
-        "this channel",
-        "the channel",
-        "this",
-        "current channel",
-    ):
-        ctx = _get_channel_context(auth_id)
-        if ctx:
-            return ctx
-        raise ValueError("No current channel context. Specify the channel name.")
-    return channel_ref
-
-
-def _infer_channel_type(text: str) -> str:
-    """Infer channel type from voice text. Default: workshop."""
-    text_lower = text.lower()
-    for keyword, channel_type in _CHANNEL_TYPE_KEYWORDS.items():
-        if keyword in text_lower:
-            return channel_type
-    return "workshop"
-
-
-def _extract_member_refs(members_text: str) -> list[str]:
-    """Extract persona name references from 'with X and Y' / 'with X, Y, Z'."""
-    if not members_text:
-        return []
-    # Normalize: split on "and", ",", "&"
-    parts = re.split(r"\s+and\s+|,\s*|&\s*", members_text.strip())
-    return [p.strip() for p in parts if p.strip()]
-
-
-def _match_persona_for_channel(name_ref: str) -> dict:
-    """Fuzzy match a persona name/slug reference against active personas."""
-    personas = Persona.query.filter_by(status="active").all()
-    return _fuzzy_match(
-        name_ref,
-        personas,
-        lambda p: [p.name.lower(), p.slug.lower()],
-    )
-
-
-def _resolve_and_match_channel(channel_ref: str, auth_id: str) -> tuple:
-    """Resolve a channel reference and fuzzy-match it against active channels.
-
-    Combines the common resolve -> query -> match pipeline used by most
-    channel handlers.
-
-    Returns:
-        (channel, None) on success
-        (None, (response, status_code)) on error (no_match / ambiguous / bad ref)
-    """
-    try:
-        resolved_ref = _resolve_channel_ref(channel_ref, auth_id)
-    except ValueError as e:
-        return None, _voice_error(str(e), "Specify the channel name.", 400)
-
-    channels = Channel.query.filter(Channel.status.in_(["pending", "active"])).all()
-    result = _match_channel(resolved_ref, channels)
-
-    if "no_match" in result:
-        return None, _voice_error(
-            f"No channel found matching '{channel_ref}'.",
-            "Check channel names or say 'list channels'.",
-            404,
-        )
-    if "ambiguous" in result:
-        slugs = [f"#{ch.slug}" for ch in result["ambiguous"]]
-        voice = {
-            "status_line": f"Multiple channels match '{channel_ref}'.",
-            "results": slugs,
-            "next_action": "Say the full channel name.",
-        }
-        return None, (jsonify({"voice": voice}), 409)
-
-    return result["match"], None
-
-
-def _handle_channel_intent(intent: dict, text: str, formatter) -> tuple:
-    """Route a channel-targeted voice command to ChannelService."""
-    channel_service = current_app.extensions.get("channel_service")
-    if not channel_service:
-        return _voice_error(
-            "Channels not available.", "Channel service not configured.", 503
-        )
-
-    # Resolve the operator's Persona
-    operator_persona = Persona.get_operator()
-    if not operator_persona:
-        return _voice_error(
-            "Operator identity not configured.",
-            "Register an operator persona first.",
-            503,
-        )
-
-    action = intent["action"]
-    auth_id = _get_auth_id()
-
-    if action == "send":
-        return _handle_channel_send(
-            intent, channel_service, formatter, auth_id, operator_persona
-        )
-    elif action == "history":
-        return _handle_channel_history(
-            intent, channel_service, formatter, auth_id, operator_persona
-        )
-    elif action == "list":
-        return _handle_channel_list(channel_service, operator_persona, formatter)
-    elif action == "create":
-        return _handle_channel_create(
-            intent, channel_service, formatter, auth_id, operator_persona
-        )
-    elif action == "add_member":
-        return _handle_channel_add_member(
-            intent, channel_service, formatter, auth_id, operator_persona
-        )
-    elif action == "complete":
-        return _handle_channel_complete(
-            intent, channel_service, formatter, auth_id, operator_persona
-        )
-    else:
-        return _voice_error(
-            "Unknown channel action.",
-            "Try 'send to [channel]: [message]'.",
-            400,
-        )
-
-
-def _handle_channel_send(intent, channel_service, formatter, auth_id, operator_persona):
-    """Handle sending a message to a channel."""
-    channel_ref = intent.get("channel_ref", "")
-    content = intent.get("content", "")
-
-    channel, err = _resolve_and_match_channel(channel_ref, auth_id)
-    if err:
-        return err
-
-    try:
-        channel_service.send_message(
-            slug=channel.slug,
-            content=content,
-            persona=operator_persona,
-        )
-    except ChannelError as e:
-        return _voice_error(str(e), "Check channel status.", 400)
-
-    _set_channel_context(auth_id, channel.slug)
-    voice = formatter.format_channel_message_sent(channel.slug)
-    return jsonify({"voice": voice}), 200
-
-
-def _handle_channel_history(
-    intent, channel_service, formatter, auth_id, operator_persona
-):
-    """Handle channel history retrieval."""
-    channel_ref = intent.get("channel_ref", "")
-
-    channel, err = _resolve_and_match_channel(channel_ref, auth_id)
-    if err:
-        return err
-
-    try:
-        messages = channel_service.get_history(
-            slug=channel.slug,
-            persona=operator_persona,
-            limit=10,
-        )
-    except ChannelError as e:
-        return _voice_error(str(e), "Check channel membership.", 400)
-
-    message_dicts = [
-        {
-            "persona_name": msg.persona.name if msg.persona else "Unknown",
-            "content": msg.content or "",
-        }
-        for msg in messages
-    ]
-
-    _set_channel_context(auth_id, channel.slug)
-    voice = formatter.format_channel_history(channel.slug, message_dicts)
-    return jsonify({"voice": voice}), 200
-
-
-def _handle_channel_list(channel_service, operator_persona, formatter):
-    """Handle listing channels visible to the operator."""
-    try:
-        channels = channel_service.list_channels(
-            persona=operator_persona,
-            all_visible=True,
-        )
-    except ChannelError as e:
-        return _voice_error(str(e), "Check operator persona.", 400)
-
-    # Filter to pending/active only
-    active_channels = [ch for ch in channels if ch.status in ("pending", "active")]
-
-    channel_dicts = [
-        {
-            "slug": ch.slug,
-            "channel_type": ch.channel_type.value,
-            "status": ch.status,
-        }
-        for ch in active_channels
-    ]
-
-    voice = formatter.format_channel_list(channel_dicts)
-    return jsonify({"voice": voice}), 200
-
-
-def _handle_channel_create(
-    intent, channel_service, formatter, auth_id, operator_persona
-):
-    """Handle channel creation via voice."""
-    name = intent.get("name", "")
-    channel_type = intent.get("channel_type", "workshop")
-    member_refs = intent.get("member_refs", [])
-
-    try:
-        channel = channel_service.create_channel(
-            creator_persona=operator_persona,
-            name=name,
-            channel_type=channel_type,
-        )
-    except ChannelError as e:
-        return _voice_error(str(e), "Check channel creation permissions.", 400)
-
-    # Add members if specified
-    member_results = []
-    for ref in member_refs:
-        persona_result = _match_persona_for_channel(ref)
-        if "match" in persona_result:
-            persona = persona_result["match"]
-            try:
-                channel_service.add_member(
-                    slug=channel.slug,
-                    persona_slug=persona.slug,
-                    caller_persona=operator_persona,
-                )
-                # Check if agent is spinning up
-                agent = (
-                    db.session.query(Agent)
-                    .filter_by(persona_id=persona.id, ended_at=None)
-                    .first()
-                )
-                spinning_up = agent is None
-                if spinning_up:
-                    member_results.append(f"{persona.name} -- agent spinning up.")
-                else:
-                    member_results.append(f"{persona.name} joined.")
-            except ChannelError as e:
-                member_results.append(f"{persona.name}: {e}")
-        elif "ambiguous" in persona_result:
-            names = [p.name for p in persona_result["ambiguous"]]
-            member_results.append(f"'{ref}' is ambiguous: {', '.join(names)}")
-        else:
-            member_results.append(f"'{ref}' not found.")
-
-    _set_channel_context(auth_id, channel.slug)
-    voice = formatter.format_channel_created(channel.slug, channel_type, member_results)
-    return jsonify({"voice": voice}), 200
-
-
-def _handle_channel_add_member(
-    intent, channel_service, formatter, auth_id, operator_persona
-):
-    """Handle adding a member to a channel."""
-    member_ref = intent.get("member_ref", "")
-    channel_ref = intent.get("channel_ref", "")
-
-    # Resolve persona
-    persona_result = _match_persona_for_channel(member_ref)
-    if "no_match" in persona_result:
-        return _voice_error(
-            f"No persona found matching '{member_ref}'.",
-            "Check persona names or say 'list personas'.",
-            404,
-        )
-    if "ambiguous" in persona_result:
-        names = [p.name for p in persona_result["ambiguous"]]
-        voice = {
-            "status_line": f"Multiple personas match '{member_ref}'.",
-            "results": names,
-            "next_action": "Say the full persona name.",
-        }
-        return jsonify({"voice": voice}), 409
-
-    persona = persona_result["match"]
-
-    # Resolve channel
-    channel, err = _resolve_and_match_channel(channel_ref, auth_id)
-    if err:
-        return err
-    try:
-        channel_service.add_member(
-            slug=channel.slug,
-            persona_slug=persona.slug,
-            caller_persona=operator_persona,
-        )
-    except ChannelError as e:
-        return _voice_error(str(e), "Check membership requirements.", 400)
-
-    # Check if agent is spinning up
-    agent = (
-        db.session.query(Agent).filter_by(persona_id=persona.id, ended_at=None).first()
-    )
-    spinning_up = agent is None
-
-    _set_channel_context(auth_id, channel.slug)
-    voice = formatter.format_channel_member_added(
-        persona.name, channel.slug, spinning_up
-    )
-    return jsonify({"voice": voice}), 200
-
-
-def _handle_channel_complete(
-    intent, channel_service, formatter, auth_id, operator_persona
-):
-    """Handle channel completion."""
-    channel_ref = intent.get("channel_ref", "")
-
-    channel, err = _resolve_and_match_channel(channel_ref, auth_id)
-    if err:
-        return err
-
-    try:
-        channel_service.complete_channel(
-            slug=channel.slug,
-            persona=operator_persona,
-        )
-    except ChannelError as e:
-        return _voice_error(str(e), "Check channel status.", 400)
-
-    _set_channel_context(auth_id, channel.slug)
-    voice = formatter.format_channel_completed(channel.slug)
-    return jsonify({"voice": voice}), 200
-
-
-# Affirmative patterns for matching voice text to "Yes" options
-_AFFIRMATIVE_PATTERNS = {
-    "yes",
-    "yeah",
-    "yep",
-    "yup",
-    "sure",
-    "ok",
-    "okay",
-    "approve",
-    "go",
-    "proceed",
-    "do it",
-    "go ahead",
-    "absolutely",
-    "confirmed",
-    "confirm",
-}
-
-
-def _match_picker_option(text: str, labels: list[str]) -> int:
-    """Match voice text to the best picker option by label.
-
-    Used for TUI pickers that don't have an "Other" option (e.g., ExitPlanMode).
-    Tries exact match first, then fuzzy/semantic matching.
-
-    Args:
-        text: The user's voice text (e.g., "Yes", "go ahead", "no")
-        labels: The option labels in order (e.g., ["Yes", "No"])
-
-    Returns:
-        Index of the best matching option (0-based). Defaults to 0 (first option)
-        if no confident match is found — safer to approve than to reject for plan
-        approval where the user explicitly initiated the response.
-    """
-    normalized = text.strip().lower()
-
-    # Exact match (case-insensitive)
-    for i, label in enumerate(labels):
-        if normalized == label.lower():
-            return i
-
-    # Substring match — user text contains an option label
-    for i, label in enumerate(labels):
-        if label.lower() in normalized:
-            return i
-
-    # Semantic match — check negation FIRST so "don't do it" doesn't match
-    # the affirmative "do it" pattern.
-    words = set(normalized.split())
-    _negative_words = {"no", "nope", "nah", "reject", "stop", "cancel"}
-    if words & _negative_words or "don't" in normalized or "not" in words:
-        for i, label in enumerate(labels):
-            if label.lower() in ("no", "reject", "cancel"):
-                return i
-        return min(1, len(labels) - 1)  # Default to second option for negative
-
-    # Affirmative patterns (after negation check to prevent "don't do it" → "do it")
-    # Use word-boundary matching to avoid false positives (e.g., "cargo" matching "go")
-    if words & _AFFIRMATIVE_PATTERNS or any(
-        p in normalized for p in _AFFIRMATIVE_PATTERNS if " " in p
-    ):
-        for i, label in enumerate(labels):
-            if label.lower() in ("yes", "approve", "ok", "proceed"):
-                return i
-        return 0  # Default to first option for affirmative
-
-    # No confident match — default to first option (typically "Yes"/approve).
-    # The user explicitly sent a response to an AWAITING_INPUT agent, so they
-    # almost certainly intended to approve rather than reject.
-    logger.warning(
-        f"No confident match for '{text}' against options {labels}, "
-        f"defaulting to index 0 ({labels[0] if labels else '?'})"
-    )
-    return 0
 
 
 voice_bridge_bp = Blueprint("voice_bridge", __name__)
@@ -755,6 +75,9 @@ def _voice_error(error_type: str, suggestion: str, status_code: int = 400):
         }
     body["error"] = error_type
     return jsonify(body), status_code
+
+
+# ── Agent query helpers (kept in route for db patch compatibility) ─────
 
 
 def _get_active_agents():
@@ -866,27 +189,6 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
     return result
 
 
-@voice_bridge_bp.route("/voice")
-def serve_voice_app():
-    """Serve the voice bridge PWA entry point."""
-    static_dir = os.path.join(current_app.root_path, "..", "..", "static", "voice")
-    static_dir = os.path.normpath(static_dir)
-    resp = make_response(send_from_directory(static_dir, "voice.html"))
-    resp.headers["Cache-Control"] = "no-store"
-    return resp
-
-
-@voice_bridge_bp.route("/voice-sw.js")
-def serve_voice_sw():
-    """Serve service worker with broadened scope for /voice page control."""
-    static_dir = os.path.join(current_app.root_path, "..", "..", "static", "voice")
-    static_dir = os.path.normpath(static_dir)
-    resp = make_response(send_from_directory(static_dir, "sw.js"))
-    resp.headers["Service-Worker-Allowed"] = "/"
-    resp.headers["Cache-Control"] = "no-cache"
-    return resp
-
-
 def _is_local_or_lan(addr: str) -> bool:
     """Check if an address is localhost or a private/LAN IP."""
     if addr in ("127.0.0.1", "::1", "localhost"):
@@ -916,6 +218,27 @@ def _is_local_or_lan(addr: str) -> bool:
             except ValueError:
                 pass
     return False
+
+
+@voice_bridge_bp.route("/voice")
+def serve_voice_app():
+    """Serve the voice bridge PWA entry point."""
+    static_dir = os.path.join(current_app.root_path, "..", "..", "static", "voice")
+    static_dir = os.path.normpath(static_dir)
+    resp = make_response(send_from_directory(static_dir, "voice.html"))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@voice_bridge_bp.route("/voice-sw.js")
+def serve_voice_sw():
+    """Serve service worker with broadened scope for /voice page control."""
+    static_dir = os.path.join(current_app.root_path, "..", "..", "static", "voice")
+    static_dir = os.path.normpath(static_dir)
+    resp = make_response(send_from_directory(static_dir, "sw.js"))
+    resp.headers["Service-Worker-Allowed"] = "/"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 @voice_bridge_bp.before_request
@@ -978,6 +301,360 @@ def list_sessions():
     return jsonify(response_data), 200
 
 
+# ── voice_command() internal helpers ──────────────────────────────────
+
+
+def _resolve_voice_command_agent(agent_id, text, formatter):
+    """Resolve the target agent for a voice command.
+
+    Returns:
+        (agent, None) on success
+        (None, (response, status_code)) on error
+    """
+    if agent_id:
+        agent = db.session.get(Agent, agent_id)
+        if not agent:
+            return None, _voice_error(
+                "Agent not found.", "Check the agent ID and try again.", 404
+            )
+        return agent, None
+
+    # Auto-target: find the single agent awaiting input (if enabled)
+    config = current_app.config.get("APP_CONFIG", {})
+    auto_target = config.get("voice_bridge", {}).get("auto_target", False)
+    if not auto_target:
+        return None, _voice_error(
+            "No agent specified.",
+            "Select an agent first, then send your command.",
+            400,
+        )
+    active = _get_active_agents()
+    awaiting = [
+        a
+        for a in active
+        if a.get_current_command()
+        and a.get_current_command().state == CommandState.AWAITING_INPUT
+    ]
+    if len(awaiting) == 0:
+        logger.warning(
+            f"voice_command_rejected: reason=no_agents_awaiting_input, "
+            f"text_length={len(text) if text else 0}, active_agents={len(active)}"
+        )
+        agent_dicts = [_agent_to_voice_dict(a) for a in active]
+        if formatter:
+            voice = formatter.format_error(
+                "No agents are waiting for input.",
+                "Check agent status for what they're working on.",
+            )
+            voice["results"] = [
+                f"{d['project']}: {d['state']}" for d in agent_dicts[:3]
+            ]
+        else:
+            voice = {
+                "status_line": "No agents awaiting input.",
+                "results": [],
+                "next_action": "none",
+            }
+        return None, (jsonify({"voice": voice}), 409)
+    elif len(awaiting) > 1:
+        names = [a.name for a in awaiting]
+        return None, _voice_error(
+            f"Multiple agents need input: {', '.join(names)}.",
+            "Specify which agent by including agent_id.",
+            409,
+        )
+    return awaiting[0], None
+
+
+def _detect_picker_state(agent, current_command):
+    """Detect if the agent's current question has structured options (picker).
+
+    Returns a dict with:
+        has_picker: bool
+        is_plan_approval: bool
+        picker_option_count: int
+        picker_option_labels: list[str]
+    """
+    state = {
+        "has_picker": False,
+        "is_plan_approval": False,
+        "picker_option_count": 0,
+        "picker_option_labels": [],
+    }
+
+    if not (current_command and current_command.turns):
+        return state
+
+    for t in reversed(current_command.turns):
+        if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
+            # Count options from tool_input (canonical source for TUI navigation)
+            if t.tool_input and isinstance(t.tool_input, dict):
+                questions = t.tool_input.get("questions", [])
+                if questions and isinstance(questions, list) and len(questions) > 0:
+                    opts = questions[0].get("options", [])
+                    if isinstance(opts, list) and len(opts) > 0:
+                        state["has_picker"] = True
+                        state["picker_option_count"] = len(opts)
+                        state["picker_option_labels"] = [
+                            o.get("label", "") for o in opts if isinstance(o, dict)
+                        ]
+                # Detect ExitPlanMode — has "source": "exit_plan_mode_default"
+                if t.tool_input.get("source") == "exit_plan_mode_default":
+                    state["is_plan_approval"] = True
+            # Fallback: question_options column (may not have tool_input)
+            if not state["has_picker"] and t.question_options:
+                state["has_picker"] = True
+            break
+
+    if state["has_picker"]:
+        route_desc = (
+            "plan approval (direct select)"
+            if state["is_plan_approval"]
+            else "'Other'"
+        )
+        logger.info(
+            f"Voice command to agent {agent.id} targeting a picker question "
+            f"({state['picker_option_count']} options). Will route through {route_desc}."
+        )
+
+    return state
+
+
+def _dispatch_tmux_send(agent, send_text, picker_state, bridge_config, is_answering, is_processing):
+    """Send text to agent via tmux, handling picker/plan-approval/normal paths.
+
+    Returns the tmux send result.
+    """
+    subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
+    text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 120)
+
+    has_picker = picker_state["has_picker"]
+    is_plan_approval = picker_state["is_plan_approval"]
+    picker_option_count = picker_state["picker_option_count"]
+    picker_option_labels = picker_state["picker_option_labels"]
+
+    if has_picker and is_answering and is_plan_approval:
+        # ExitPlanMode plan approval — NO "Other" option exists in this TUI.
+        sequential_delay_ms = bridge_config.get("sequential_delay_ms", 150)
+        target_index = _match_picker_option(send_text, picker_option_labels)
+        logger.info(
+            f"Plan approval for agent {agent.id}: "
+            f"matched '{send_text}' to option {target_index} "
+            f"({picker_option_labels[target_index] if target_index < len(picker_option_labels) else '?'})"
+        )
+        keys = ["Down"] * target_index + ["Enter"]
+        return tmux_bridge.send_keys(
+            agent.tmux_pane_id,
+            *keys,
+            timeout=subprocess_timeout,
+            sequential_delay_ms=sequential_delay_ms,
+            verify_enter=True,
+        )
+    elif has_picker and is_answering:
+        # AskUserQuestion picker — navigate to "Other" option then type text.
+        sequential_delay_ms = bridge_config.get("sequential_delay_ms", 150)
+        select_other_delay_ms = bridge_config.get("select_other_delay_ms", 500)
+        keys = ["Down"] * picker_option_count + ["Enter"]
+        result = tmux_bridge.send_keys(
+            agent.tmux_pane_id,
+            *keys,
+            timeout=subprocess_timeout,
+            sequential_delay_ms=sequential_delay_ms,
+            verify_enter=True,
+        )
+        if result.success:
+            # Wait for the "Other" text input to appear
+            time.sleep(select_other_delay_ms / 1000.0)
+            result = tmux_bridge.send_text(
+                pane_id=agent.tmux_pane_id,
+                text=send_text,
+                timeout=subprocess_timeout,
+                text_enter_delay_ms=text_enter_delay_ms,
+                verify_enter=True,
+            )
+        return result
+    elif is_processing:
+        # Agent is busy — interrupt first (Escape), then send the new instruction
+        return tmux_bridge.interrupt_and_send_text(
+            pane_id=agent.tmux_pane_id,
+            text=send_text,
+            timeout=subprocess_timeout,
+            text_enter_delay_ms=text_enter_delay_ms,
+            verify_enter=True,
+        )
+    else:
+        # Always verify Enter — autocomplete can swallow it on long text
+        return tmux_bridge.send_text(
+            pane_id=agent.tmux_pane_id,
+            text=send_text,
+            timeout=subprocess_timeout,
+            text_enter_delay_ms=text_enter_delay_ms,
+            verify_enter=True,
+        )
+
+
+def _handle_voice_command_idle_or_processing(
+    agent, send_text, start_time, formatter, is_processing
+):
+    """Handle voice command for IDLE/PROCESSING agents — turn creation + broadcast."""
+    from ..services.hook_agent_state import get_agent_hook_state
+
+    turn_result = None
+    try:
+        from ..services.command_lifecycle import CommandLifecycleManager
+
+        event_writer = current_app.extensions.get("event_writer")
+        lifecycle = CommandLifecycleManager(
+            session=db.session,
+            event_writer=event_writer,
+        )
+        turn_result = lifecycle.process_turn(
+            agent=agent,
+            actor=TurnActor.USER,
+            text=send_text,
+        )
+        # Auto-transition COMMANDED → PROCESSING
+        if (
+            turn_result.success
+            and turn_result.command
+            and turn_result.command.state == CommandState.COMMANDED
+        ):
+            lifecycle.update_command_state(
+                command=turn_result.command,
+                to_state=CommandState.PROCESSING,
+                trigger="voice_command",
+                confidence=1.0,
+            )
+
+        pending = lifecycle.get_pending_summarisations()
+        agent.last_seen_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        # Broadcast turn_created immediately after commit
+        if turn_result.success and turn_result.command:
+            try:
+                from ..services.broadcaster import get_broadcaster
+
+                user_turn_id = None
+                if turn_result.command.turns:
+                    for t in reversed(turn_result.command.turns):
+                        if t.actor == TurnActor.USER:
+                            user_turn_id = t.id
+                            break
+                get_broadcaster().broadcast(
+                    "turn_created",
+                    {
+                        "agent_id": agent.id,
+                        "project_id": agent.project_id,
+                        "text": send_text,
+                        "actor": "user",
+                        "intent": turn_result.intent.intent.value
+                        if turn_result.intent
+                        else "command",
+                        "command_id": turn_result.command.id,
+                        "command_instruction": turn_result.command.instruction,
+                        "turn_id": user_turn_id,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Voice command turn_created broadcast failed: {e}")
+
+        # Set respond_pending AFTER commit so hook's user_prompt_submit
+        # skips duplicate turn creation
+        get_agent_hook_state().set_respond_pending(agent.id)
+
+        broadcast_card_refresh(agent, "voice_command")
+
+        # Execute summarisations (instruction + turn)
+        if pending:
+            try:
+                summarisation_service = current_app.extensions.get(
+                    "summarisation_service"
+                )
+                if summarisation_service:
+                    summarisation_service.execute_pending(pending, db.session)
+            except Exception as e:
+                logger.warning(f"Voice command summarisation failed: {e}")
+
+    except Exception as e:
+        # Lifecycle processing failed but tmux send already succeeded.
+        logger.warning(
+            f"Voice command turn creation failed (tmux send succeeded): {e}"
+        )
+        db.session.rollback()
+        get_agent_hook_state().clear_respond_inflight(agent.id)
+        agent.last_seen_at = datetime.now(timezone.utc)
+        db.session.commit()
+        broadcast_card_refresh(agent, "voice_command")
+
+    latency_ms = int((time.time() - start_time) * 1000)
+    if formatter:
+        voice = formatter.format_command_result(agent.name, True)
+    else:
+        voice = {
+            "status_line": f"Command sent to {agent.name}.",
+            "results": [],
+            "next_action": "none",
+        }
+
+    new_state = "processing"
+    if turn_result and turn_result.command:
+        new_state = turn_result.command.state.value
+
+    response_data = {
+        "voice": voice,
+        "agent_id": agent.id,
+        "new_state": new_state,
+        "latency_ms": latency_ms,
+    }
+    if is_processing:
+        response_data["interrupted"] = True
+    return jsonify(response_data), 200
+
+
+def _handle_voice_command_awaiting(
+    agent, current_command, text, start_time, formatter, has_picker
+):
+    """Handle voice command for AWAITING_INPUT agents — complete_answer path."""
+    from ..services.hook_agent_state import get_agent_hook_state
+
+    try:
+        from ..services.command_lifecycle import complete_answer
+
+        result = complete_answer(current_command, agent, text, source="voice_command")
+
+        latency_ms = int((time.time() - start_time) * 1000)
+        if formatter:
+            voice = formatter.format_command_result(agent.name, True)
+        else:
+            voice = {
+                "status_line": f"Command sent to {agent.name}.",
+                "results": [],
+                "next_action": "none",
+            }
+
+        response_data = {
+            "voice": voice,
+            "agent_id": agent.id,
+            "new_state": result.new_state.value,
+            "latency_ms": latency_ms,
+        }
+        if has_picker:
+            response_data["has_picker"] = True
+        return jsonify(response_data), 200
+
+    except Exception as e:
+        db.session.rollback()
+        get_agent_hook_state().clear_respond_inflight(agent.id)
+        logger.exception(f"Error recording voice command for agent {agent.id}: {e}")
+        return _voice_error(
+            "Command was sent but recording failed.",
+            "The agent received your input. State will self-correct.",
+            500,
+        )
+
+
 @voice_bridge_bp.route("/api/voice/command", methods=["POST"])
 def voice_command():
     """Submit a voice command to an agent (FR4)."""
@@ -995,74 +672,17 @@ def voice_command():
     formatter = _get_voice_formatter()
 
     # ── Channel intent detection (before agent resolution) ───────────
-    # Channel commands don't need a target agent — they route to
-    # ChannelService directly. Detection runs after handoff-intent-like
-    # structural markers (colon, question marks) to avoid false positives
-    # on agent commands.
     if text:
         channel_intent = _detect_channel_intent(text)
         if channel_intent:
             return _handle_channel_intent(channel_intent, text, formatter)
 
     # Resolve target agent
-    if agent_id:
-        agent = db.session.get(Agent, agent_id)
-        if not agent:
-            return _voice_error(
-                "Agent not found.", "Check the agent ID and try again.", 404
-            )
-    else:
-        # Auto-target: find the single agent awaiting input (if enabled)
-        config = current_app.config.get("APP_CONFIG", {})
-        auto_target = config.get("voice_bridge", {}).get("auto_target", False)
-        if not auto_target:
-            return _voice_error(
-                "No agent specified.",
-                "Select an agent first, then send your command.",
-                400,
-            )
-        active = _get_active_agents()
-        awaiting = [
-            a
-            for a in active
-            if a.get_current_command()
-            and a.get_current_command().state == CommandState.AWAITING_INPUT
-        ]
-        if len(awaiting) == 0:
-            # No agents awaiting input — return status summary
-            logger.warning(
-                f"voice_command_rejected: reason=no_agents_awaiting_input, "
-                f"text_length={len(text) if text else 0}, active_agents={len(active)}"
-            )
-            agent_dicts = [_agent_to_voice_dict(a) for a in active]
-            if formatter:
-                voice = formatter.format_error(
-                    "No agents are waiting for input.",
-                    "Check agent status for what they're working on.",
-                )
-                voice["results"] = [
-                    f"{d['project']}: {d['state']}" for d in agent_dicts[:3]
-                ]
-            else:
-                voice = {
-                    "status_line": "No agents awaiting input.",
-                    "results": [],
-                    "next_action": "none",
-                }
-            return jsonify({"voice": voice}), 409
-        elif len(awaiting) > 1:
-            names = [a.name for a in awaiting]
-            return _voice_error(
-                f"Multiple agents need input: {', '.join(names)}.",
-                "Specify which agent by including agent_id.",
-                409,
-            )
-        agent = awaiting[0]
+    agent, err = _resolve_voice_command_agent(agent_id, text, formatter)
+    if err:
+        return err
 
     # ── Handoff intent detection ─────────────────────────────────────
-    # Uses the shared detect_handoff_intent from the intent detector
-    # (regex patterns + LLM fallback). If the user's message is a handoff
-    # request, route to HandoffExecutor instead of sending via tmux.
     from ..services.intent_detector import detect_handoff_intent
 
     is_handoff, handoff_context = detect_handoff_intent(text)
@@ -1105,49 +725,13 @@ def voice_command():
     is_idle = current_state in (None, CommandState.IDLE, CommandState.COMPLETE)
     is_processing = current_state in (CommandState.PROCESSING, CommandState.COMMANDED)
 
-    # Detect if the agent's current question has structured options (picker).
-    # Voice chat always sends free text, which works fine for free-text prompts
-    # but garbles AskUserQuestion picker UIs (C2 bug). When a picker is active,
-    # route through the "Other" option instead of typing literal text.
-    #
-    # ExitPlanMode is a special case: its TUI has Yes/No options but NO "Other"
-    # option (unlike AskUserQuestion which always appends "Other"). Navigating
-    # past the last option causes Claude Code to interpret it as a rejection,
-    # killing the session. For ExitPlanMode, match the user's answer to an
-    # option and select it directly.
-    has_picker = False
-    is_plan_approval = False
-    picker_option_count = 0
-    picker_option_labels = []
-    if is_answering and current_command and current_command.turns:
-        for t in reversed(current_command.turns):
-            if t.actor == TurnActor.AGENT and t.intent == TurnIntent.QUESTION:
-                # Count options from tool_input (canonical source for TUI navigation)
-                if t.tool_input and isinstance(t.tool_input, dict):
-                    questions = t.tool_input.get("questions", [])
-                    if questions and isinstance(questions, list) and len(questions) > 0:
-                        opts = questions[0].get("options", [])
-                        if isinstance(opts, list) and len(opts) > 0:
-                            has_picker = True
-                            picker_option_count = len(opts)
-                            picker_option_labels = [
-                                o.get("label", "") for o in opts if isinstance(o, dict)
-                            ]
-                    # Detect ExitPlanMode — has "source": "exit_plan_mode_default"
-                    if t.tool_input.get("source") == "exit_plan_mode_default":
-                        is_plan_approval = True
-                # Fallback: question_options column (may not have tool_input)
-                if not has_picker and t.question_options:
-                    has_picker = True
-                break
-        if has_picker:
-            route_desc = (
-                "plan approval (direct select)" if is_plan_approval else "'Other'"
-            )
-            logger.info(
-                f"Voice command to agent {agent.id} targeting a picker question "
-                f"({picker_option_count} options). Will route through {route_desc}."
-            )
+    # Detect picker state
+    picker_state = _detect_picker_state(agent, current_command) if is_answering else {
+        "has_picker": False,
+        "is_plan_approval": False,
+        "picker_option_count": 0,
+        "picker_option_labels": [],
+    }
 
     # Check tmux pane
     if not agent.tmux_pane_id:
@@ -1157,15 +741,7 @@ def voice_command():
             503,
         )
 
-    # Send via tmux bridge
-    config = current_app.config.get("APP_CONFIG", {})
-    bridge_config = config.get("tmux_bridge", {})
-    subprocess_timeout = bridge_config.get("subprocess_timeout", 5)
-    text_enter_delay_ms = bridge_config.get("text_enter_delay_ms", 120)
-
-    # Prepend file_path reference if provided (file before text so the
-    # instruction can reference it).  Single line — no embedded newlines
-    # which cause premature submission via tmux send-keys.
+    # Prepend file_path reference if provided
     send_text = text
     if file_path:
         if send_text:
@@ -1173,79 +749,18 @@ def voice_command():
         else:
             send_text = file_path
 
-    # Set inflight flag BEFORE tmux send to close the race window between
-    # send and respond_pending (set after commit).  The hook's
-    # process_user_prompt_submit checks this to skip duplicate turn creation.
+    # Set inflight flag BEFORE tmux send
     from ..services.hook_agent_state import get_agent_hook_state
 
     get_agent_hook_state().set_respond_inflight(agent.id)
 
-    if has_picker and is_answering and is_plan_approval:
-        # ExitPlanMode plan approval — NO "Other" option exists in this TUI.
-        # Match the user's answer to one of the options (Yes/No) and navigate
-        # directly to it. Sending Down past the last option causes Claude Code
-        # to interpret the input as a rejection, killing the session.
-        sequential_delay_ms = bridge_config.get("sequential_delay_ms", 150)
-        target_index = _match_picker_option(send_text, picker_option_labels)
-        logger.info(
-            f"Plan approval for agent {agent.id}: "
-            f"matched '{send_text}' to option {target_index} "
-            f"({picker_option_labels[target_index] if target_index < len(picker_option_labels) else '?'})"
-        )
-        # Navigate: Down × target_index (0 for first option) + Enter
-        keys = ["Down"] * target_index + ["Enter"]
-        result = tmux_bridge.send_keys(
-            agent.tmux_pane_id,
-            *keys,
-            timeout=subprocess_timeout,
-            sequential_delay_ms=sequential_delay_ms,
-            verify_enter=True,
-        )
-    elif has_picker and is_answering:
-        # AskUserQuestion picker — navigate to "Other" option then type text,
-        # instead of sending literal text into the TUI arrow-key selector (C2).
-        sequential_delay_ms = bridge_config.get("sequential_delay_ms", 150)
-        select_other_delay_ms = bridge_config.get("select_other_delay_ms", 500)
-        # "Other" is always appended after all options by AskUserQuestion
-        keys = ["Down"] * picker_option_count + ["Enter"]
-        result = tmux_bridge.send_keys(
-            agent.tmux_pane_id,
-            *keys,
-            timeout=subprocess_timeout,
-            sequential_delay_ms=sequential_delay_ms,
-            verify_enter=True,
-        )
-        if result.success:
-            # Wait for the "Other" text input to appear
-            time.sleep(select_other_delay_ms / 1000.0)
-            # Type the custom text
-            result = tmux_bridge.send_text(
-                pane_id=agent.tmux_pane_id,
-                text=send_text,
-                timeout=subprocess_timeout,
-                text_enter_delay_ms=text_enter_delay_ms,
-                verify_enter=True,
-            )
-    else:
-        if is_processing:
-            # Agent is busy — interrupt first (Escape), then send the new instruction
-            result = tmux_bridge.interrupt_and_send_text(
-                pane_id=agent.tmux_pane_id,
-                text=send_text,
-                timeout=subprocess_timeout,
-                text_enter_delay_ms=text_enter_delay_ms,
-                verify_enter=True,
-            )
-        else:
-            # Always verify Enter — autocomplete can swallow it on long text
-            # or slash commands, leaving the command sitting in the input box.
-            result = tmux_bridge.send_text(
-                pane_id=agent.tmux_pane_id,
-                text=send_text,
-                timeout=subprocess_timeout,
-                text_enter_delay_ms=text_enter_delay_ms,
-                verify_enter=True,
-            )
+    # Send via tmux bridge
+    config = current_app.config.get("APP_CONFIG", {})
+    bridge_config = config.get("tmux_bridge", {})
+
+    result = _dispatch_tmux_send(
+        agent, send_text, picker_state, bridge_config, is_answering, is_processing
+    )
 
     if not result.success:
         get_agent_hook_state().clear_respond_inflight(agent.id)
@@ -1265,164 +780,14 @@ def voice_command():
         return jsonify({"voice": voice, "error": "send_failed"}), 502
 
     if is_idle or is_processing:
-        # Create turn directly so the user's message is persisted and
-        # broadcast regardless of whether hooks fire.  Previously this path
-        # relied entirely on hook_receiver.process_user_prompt_submit to
-        # create the Turn — but hooks can fail when context compression
-        # changes session_id, after session_end invalidates caches, or if
-        # the Claude Code process has exited.  The optimistic voice chat
-        # bubble would expire after 10s with no SSE confirmation.
-        turn_result = None
-        try:
-            from ..services.command_lifecycle import CommandLifecycleManager
-
-            event_writer = current_app.extensions.get("event_writer")
-            lifecycle = CommandLifecycleManager(
-                session=db.session,
-                event_writer=event_writer,
-            )
-            turn_result = lifecycle.process_turn(
-                agent=agent,
-                actor=TurnActor.USER,
-                text=send_text,
-            )
-            # Auto-transition COMMANDED → PROCESSING
-            if (
-                turn_result.success
-                and turn_result.command
-                and turn_result.command.state == CommandState.COMMANDED
-            ):
-                lifecycle.update_command_state(
-                    command=turn_result.command,
-                    to_state=CommandState.PROCESSING,
-                    trigger="voice_command",
-                    confidence=1.0,
-                )
-
-            pending = lifecycle.get_pending_summarisations()
-            agent.last_seen_at = datetime.now(timezone.utc)
-            db.session.commit()
-
-            # Broadcast turn_created immediately after commit
-            if turn_result.success and turn_result.command:
-                try:
-                    from ..services.broadcaster import get_broadcaster
-
-                    user_turn_id = None
-                    if turn_result.command.turns:
-                        for t in reversed(turn_result.command.turns):
-                            if t.actor == TurnActor.USER:
-                                user_turn_id = t.id
-                                break
-                    get_broadcaster().broadcast(
-                        "turn_created",
-                        {
-                            "agent_id": agent.id,
-                            "project_id": agent.project_id,
-                            "text": send_text,
-                            "actor": "user",
-                            "intent": turn_result.intent.intent.value
-                            if turn_result.intent
-                            else "command",
-                            "command_id": turn_result.command.id,
-                            "command_instruction": turn_result.command.instruction,
-                            "turn_id": user_turn_id,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        },
-                    )
-                except Exception as e:
-                    logger.warning(f"Voice command turn_created broadcast failed: {e}")
-
-            # Set respond_pending AFTER commit so hook's user_prompt_submit
-            # skips duplicate turn creation
-            from ..services.hook_agent_state import get_agent_hook_state
-
-            get_agent_hook_state().set_respond_pending(agent.id)
-
-            broadcast_card_refresh(agent, "voice_command")
-
-            # Execute summarisations (instruction + turn)
-            if pending:
-                try:
-                    summarisation_service = current_app.extensions.get(
-                        "summarisation_service"
-                    )
-                    if summarisation_service:
-                        summarisation_service.execute_pending(pending, db.session)
-                except Exception as e:
-                    logger.warning(f"Voice command summarisation failed: {e}")
-
-        except Exception as e:
-            # Lifecycle processing failed but tmux send already succeeded.
-            # Fall back: no turn persisted, hooks may still handle it.
-            logger.warning(
-                f"Voice command turn creation failed (tmux send succeeded): {e}"
-            )
-            db.session.rollback()
-            get_agent_hook_state().clear_respond_inflight(agent.id)
-            agent.last_seen_at = datetime.now(timezone.utc)
-            db.session.commit()
-            broadcast_card_refresh(agent, "voice_command")
-
-        latency_ms = int((time.time() - start_time) * 1000)
-        if formatter:
-            voice = formatter.format_command_result(agent.name, True)
-        else:
-            voice = {
-                "status_line": f"Command sent to {agent.name}.",
-                "results": [],
-                "next_action": "none",
-            }
-
-        new_state = "processing"
-        if turn_result and turn_result.command:
-            new_state = turn_result.command.state.value
-
-        response_data = {
-            "voice": voice,
-            "agent_id": agent.id,
-            "new_state": new_state,
-            "latency_ms": latency_ms,
-        }
-        if is_processing:
-            response_data["interrupted"] = True
-        return jsonify(response_data), 200
-
-    # AWAITING_INPUT path: create ANSWER turn and transition state
-    try:
-        from ..services.command_lifecycle import complete_answer
-
-        result = complete_answer(current_command, agent, text, source="voice_command")
-
-        latency_ms = int((time.time() - start_time) * 1000)
-        if formatter:
-            voice = formatter.format_command_result(agent.name, True)
-        else:
-            voice = {
-                "status_line": f"Command sent to {agent.name}.",
-                "results": [],
-                "next_action": "none",
-            }
-
-        response_data = {
-            "voice": voice,
-            "agent_id": agent.id,
-            "new_state": result.new_state.value,
-            "latency_ms": latency_ms,
-        }
-        if has_picker:
-            response_data["has_picker"] = True
-        return jsonify(response_data), 200
-
-    except Exception as e:
-        db.session.rollback()
-        get_agent_hook_state().clear_respond_inflight(agent.id)
-        logger.exception(f"Error recording voice command for agent {agent.id}: {e}")
-        return _voice_error(
-            "Command was sent but recording failed.",
-            "The agent received your input. State will self-correct.",
-            500,
+        return _handle_voice_command_idle_or_processing(
+            agent, send_text, start_time, formatter, is_processing
         )
+
+    # AWAITING_INPUT path
+    return _handle_voice_command_awaiting(
+        agent, current_command, text, start_time, formatter, picker_state["has_picker"]
+    )
 
 
 @voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/upload", methods=["POST"])
@@ -1503,11 +868,6 @@ def upload_file(agent_id: int):
     db_metadata = {k: v for k, v in file_metadata.items() if k != "server_path"}
 
     # Build message for tmux delivery.
-    # Use relative path (uploads/<file>) — Claude Code handles relative paths
-    # well and absolute paths trigger its interactive file-selection UI.
-    # File reference goes first (so the text can reference it), and
-    # everything stays on one line to avoid embedded newlines causing
-    # premature submission via tmux send-keys.
     rel_path = f"uploads/{file_metadata['stored_filename']}"
     if text:
         tmux_text = f"{rel_path} {text}"
@@ -1538,11 +898,6 @@ def upload_file(agent_id: int):
 
     # Handle state transitions (same logic as voice_command)
     if is_idle:
-        # Store file metadata so the next user_prompt_submit hook can attach it
-        # to the COMMAND turn it creates (IDLE agents have no active command yet).
-        # Include the clean display text so the hook uses it instead of the raw
-        # tmux text (which has the file path prepended), avoiding a duplicate
-        # bubble in the chat UI where the frontend dedup compares by text.
         from ..services.hook_agent_state import get_agent_hook_state
 
         pending_meta = dict(db_metadata)
@@ -1795,9 +1150,6 @@ def agent_transcript(agent_id: int):
     )
 
     if before:
-        # Look up the cursor turn's timestamp for composite pagination.
-        # This ensures correct ordering even when timestamps are corrected
-        # by the JSONL reconciler (turn insertion order != conversation order).
         cursor_turn = db.session.get(Turn, before)
         if cursor_turn:
             query = query.filter(
@@ -1847,8 +1199,7 @@ def agent_transcript(agent_id: int):
         )
 
     # Deduplicate: suppress PROGRESS turns whose text is fully contained in
-    # a COMPLETION/END_OF_COMMAND turn for the same command.  This prevents
-    # the chat from showing intermediate progress AND the final response.
+    # a COMPLETION/END_OF_COMMAND turn for the same command.
     if turn_list:
         completion_text_by_cmd: dict[int, str] = {}
         for t in turn_list:
@@ -1877,9 +1228,7 @@ def agent_transcript(agent_id: int):
                 deduped.append(t)
             turn_list = deduped
 
-    # Inject synthetic command_boundary entries for commands with no turns in this page.
-    # This ensures command dividers appear at their chronological position even when
-    # a command lost its turns (e.g. during server downtime).
+    # Inject synthetic command_boundary entries
     if turn_list:
         seen_command_ids = {t["command_id"] for t in turn_list}
         min_ts = min(
@@ -2109,14 +1458,7 @@ def voice_agent_context(agent_id: int):
     "/api/voice/agents/<int:agent_id>/recapture-permission", methods=["POST"]
 )
 def recapture_permission_options(agent_id: int):
-    """Re-capture permission options from tmux when initial capture timed out.
-
-    Called by the voice chat frontend when it detects a question bubble
-    with no options for a permission_request turn. Retries the tmux pane
-    capture with a generous timeout, updates the turn in the DB, and
-    broadcasts a turn_updated SSE event so all connected clients get
-    the options.
-    """
+    """Re-capture permission options from tmux when initial capture timed out."""
     start_time = time.time()
 
     agent = db.session.get(Agent, agent_id)
@@ -2145,8 +1487,7 @@ def recapture_permission_options(agent_id: int):
     if not question_turn:
         return jsonify({"error": "No question turn found"}), 404
 
-    # Only recapture permission_request turns — free_text questions are
-    # conversational and must not be overwritten with Yes/No buttons.
+    # Only recapture permission_request turns
     if (
         question_turn.question_source_type
         and question_turn.question_source_type != "permission_request"
@@ -2194,7 +1535,7 @@ def recapture_permission_options(agent_id: int):
 
     structured_options = synthesize_permission_options(
         agent,
-        tool_name=None,  # Unknown at this point
+        tool_name=None,
         tool_input=None,
     )
 
