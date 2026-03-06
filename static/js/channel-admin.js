@@ -629,6 +629,13 @@
             // Refresh channel list to reflect active status
             _fetchChannels();
         });
+
+        // S12: update member pill state colours on card_refresh
+        global.sseClient.on('card_refresh', function(data) {
+            if (global.ChannelChat && data) {
+                global.ChannelChat.onCardRefresh(data);
+            }
+        });
     }
 
     // ── Helpers ──────────────────────────────────────────────────

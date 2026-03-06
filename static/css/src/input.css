@@ -2415,7 +2415,7 @@ body::after {
 /* S11: clickable connected pill */
 button.channel-chat-member-pill {
     cursor: pointer;
-    transition: opacity 0.15s;
+    transition: opacity 0.15s, border-color 0.2s, background 0.2s, box-shadow 0.3s;
     background: var(--bg-surface);
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -2425,6 +2425,18 @@ button.channel-chat-member-pill:hover {
     border-color: var(--cyan);
     color: var(--text-primary);
 }
+button.channel-chat-member-pill.focus-highlight {
+    box-shadow: 0 0 12px rgba(86,212,221,0.3), 0 0 30px rgba(86,212,221,0.1);
+    border-color: rgba(86,212,221,0.5);
+}
+
+/* S12: agent state pill colours */
+.channel-pill-processing { border-color: var(--blue); background: rgba(115, 153, 224, 0.12); }
+.channel-pill-awaiting-input { border-color: var(--amber); background: rgba(224, 176, 115, 0.12); }
+.channel-pill-commanded { border-color: var(--amber); background: rgba(224, 176, 115, 0.06); }
+.channel-pill-complete { border-color: var(--green); background: rgba(115, 224, 160, 0.12); }
+.channel-pill-idle { border-color: var(--border); }
+.channel-pill-timed-out { border-color: var(--red); background: rgba(224, 115, 115, 0.12); }
 
 /* S11: pending pill (agent not yet connected) */
 .channel-member-pill-pending {

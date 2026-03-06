@@ -261,7 +261,9 @@ def _channel_to_dict(channel) -> dict:
 
 def _membership_to_dict(membership) -> dict:
     """Serialize a ChannelMembership to a JSON-safe dict."""
-    return {
+    from ..services.card_state import get_effective_state, get_state_info
+
+    d = {
         "id": membership.id,
         "persona_slug": membership.persona.slug if membership.persona else None,
         "persona_name": membership.persona.name if membership.persona else None,
@@ -271,6 +273,26 @@ def _membership_to_dict(membership) -> dict:
         "joined_at": membership.joined_at.isoformat() if membership.joined_at else None,
         "left_at": membership.left_at.isoformat() if membership.left_at else None,
     }
+
+    # Include agent command state when an agent is connected
+    if membership.agent_id and membership.agent:
+        try:
+            from ..models.command import CommandState
+
+            state = get_effective_state(membership.agent)
+            if isinstance(state, CommandState):
+                d["agent_state"] = state.value
+            elif isinstance(state, str):
+                d["agent_state"] = state
+            else:
+                d["agent_state"] = None
+            if d.get("agent_state"):
+                info = get_state_info(state)
+                d["agent_state_label"] = info.get("label", "")
+        except Exception:
+            pass
+
+    return d
 
 
 def _message_to_dict(message, channel_slug: str) -> dict:

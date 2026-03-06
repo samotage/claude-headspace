@@ -733,18 +733,27 @@
                 nonChairTotal++;
                 if (m.agent_id) {
                     nonChairConnected++;
-                    // Connected member — clickable to focus
+                    // Connected member — clickable to focus with state colour
                     var btn = document.createElement('button');
-                    btn.className = 'channel-chat-member-pill';
+                    var stateClass = m.agent_state ? 'channel-pill-' + m.agent_state.toLowerCase().replace(/_/g, '-') : '';
+                    btn.className = 'channel-chat-member-pill' + (stateClass ? ' ' + stateClass : '');
                     btn.textContent = name;
-                    btn.title = 'Focus ' + name;
+                    btn.title = m.agent_state_label ? name + ' — ' + m.agent_state_label : 'Focus ' + name;
                     btn.setAttribute('data-agent-id', m.agent_id);
+                    btn.setAttribute('data-agent-state', m.agent_state || '');
                     btn.setAttribute('data-persona-slug', m.persona_slug || '');
-                    (function(agentId) {
-                        btn.addEventListener('click', function() {
-                            fetch('/api/focus/' + agentId, { method: 'POST' });
+                    (function(agentId, pillBtn) {
+                        pillBtn.addEventListener('click', function() {
+                            if (window.FocusAPI) {
+                                window.FocusAPI.focusAgent(agentId).then(function(ok) {
+                                    if (ok) {
+                                        pillBtn.classList.add('focus-highlight');
+                                        setTimeout(function() { pillBtn.classList.remove('focus-highlight'); }, 1200);
+                                    }
+                                });
+                            }
                         });
-                    })(m.agent_id);
+                    })(m.agent_id, btn);
                     _memberPillsEl.appendChild(btn);
                 } else {
                     // Pending member — visual indicator
@@ -784,14 +793,23 @@
         );
         if (pendingPill && agentId) {
             var name = data.persona_name || personaSlug || 'Unknown';
+            var stateClass = data.agent_state ? 'channel-pill-' + data.agent_state.toLowerCase().replace(/_/g, '-') : '';
             var btn = document.createElement('button');
-            btn.className = 'channel-chat-member-pill';
+            btn.className = 'channel-chat-member-pill' + (stateClass ? ' ' + stateClass : '');
             btn.textContent = name;
-            btn.title = 'Focus ' + name;
+            btn.title = data.agent_state_label ? name + ' — ' + data.agent_state_label : 'Focus ' + name;
             btn.setAttribute('data-agent-id', agentId);
+            btn.setAttribute('data-agent-state', data.agent_state || '');
             btn.setAttribute('data-persona-slug', personaSlug);
             btn.addEventListener('click', function() {
-                fetch('/api/focus/' + agentId, { method: 'POST' });
+                if (window.FocusAPI) {
+                    window.FocusAPI.focusAgent(agentId).then(function(ok) {
+                        if (ok) {
+                            btn.classList.add('focus-highlight');
+                            setTimeout(function() { btn.classList.remove('focus-highlight'); }, 1200);
+                        }
+                    });
+                }
             });
             pendingPill.parentNode.replaceChild(btn, pendingPill);
         }
@@ -1021,6 +1039,31 @@
         _initScrollTracking();
     }
 
+    /**
+     * Handle card_refresh SSE event — update pill state colours live.
+     */
+    function onCardRefresh(data) {
+        if (!data || !_memberPillsEl) return;
+        var agentId = String(data.id);
+        var newState = data.state; // e.g. "PROCESSING", "AWAITING_INPUT"
+        if (!agentId || !newState) return;
+
+        var pill = _memberPillsEl.querySelector('button.channel-chat-member-pill[data-agent-id="' + agentId + '"]');
+        if (!pill) return;
+
+        // Remove old state class, apply new one
+        var classes = pill.className.split(/\s+/).filter(function(c) { return c.indexOf('channel-pill-') !== 0; });
+        var stateClass = 'channel-pill-' + newState.toLowerCase().replace(/_/g, '-');
+        classes.push(stateClass);
+        pill.className = classes.join(' ');
+        pill.setAttribute('data-agent-state', newState);
+
+        // Update tooltip with state label
+        var stateLabel = data.state_label || newState.replace(/_/g, ' ').toLowerCase();
+        var name = pill.textContent;
+        pill.title = name + ' — ' + stateLabel;
+    }
+
     // Public API
     global.ChannelChat = {
         toggle: toggle,
@@ -1038,6 +1081,7 @@
         leaveChannel: leaveChannel,
         onMemberConnected: onMemberConnected,
         onChannelReady: onChannelReady,
+        onCardRefresh: onCardRefresh,
         get _activeChannelSlug() { return _activeChannelSlug; },
     };
 
