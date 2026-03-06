@@ -242,7 +242,17 @@ class ChannelDeliveryService:
             return False
 
         try:
-            result = tmux_bridge.send_text(agent.tmux_pane_id, envelope_text)
+            # Lightweight delivery: skip ghost text detection and Enter
+            # verification.  These exist for voice bridge edge cases but
+            # add 4-5 extra subprocess calls + sleeps that can timeout
+            # under tmux server load.  Channel delivery just needs:
+            #   send-keys -l <text> → delay → send-keys Enter
+            result = tmux_bridge.send_text(
+                agent.tmux_pane_id,
+                envelope_text,
+                detect_ghost_text=False,
+                skip_verify_hint=True,
+            )
             if hasattr(result, "success") and not result.success:
                 logger.warning(f"tmux delivery failed for agent {agent.id}: {result}")
                 return False
