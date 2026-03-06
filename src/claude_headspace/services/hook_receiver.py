@@ -6,7 +6,6 @@ from `hook_receiver` without changes.
 
 Submodules:
 - hook_receiver_types: enums, namedtuples, receiver state management
-- hook_receiver_proxies: backwards-compatible proxy objects for per-agent state
 - hook_receiver_helpers: shared helper functions (broadcast, notifications, etc.)
 - hook_handler_session_start: process_session_start
 - hook_handler_session_end: process_session_end
@@ -43,7 +42,6 @@ from .hook_receiver_helpers import (  # noqa: F401
     _capture_progress_text_impl,
     _execute_pending_summarisations,
     _extract_transcript_content,
-    _fetch_context_opportunistically,
     _get_lifecycle_manager,
     _schedule_deferred_stop,
     _send_completion_notification,
@@ -51,16 +49,6 @@ from .hook_receiver_helpers import (  # noqa: F401
     _trigger_priority_scoring,
     broadcast_card_refresh,
     detect_agent_intent,
-)
-
-# --- Proxies (backwards-compatible per-agent state) ---
-from .hook_receiver_proxies import (  # noqa: F401
-    _awaiting_tool_for_agent,
-    _deferred_stop_pending,
-    _file_metadata_pending_for_agent,
-    _progress_texts_for_agent,
-    _respond_pending_for_agent,
-    _transcript_positions,
 )
 from .hook_receiver_types import (  # noqa: F401
     INFERRED_COMMAND_COOLDOWN_SECONDS,

@@ -10,6 +10,7 @@ from ..models.agent import Agent
 from ..models.command import CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from . import hook_receiver_helpers as _helpers
+from .hook_agent_state import get_agent_hook_state
 from .hook_extractors import (
     capture_plan_write as _capture_plan_write,
 )
@@ -25,7 +26,6 @@ from .hook_extractors import (
 from .hook_extractors import (
     synthesize_permission_options as _synthesize_permission_options,
 )
-from .hook_receiver_proxies import _awaiting_tool_for_agent
 from .hook_receiver_types import (
     PRE_TOOL_USE_INTERACTIVE,
     HookEventResult,
@@ -235,7 +235,7 @@ def _handle_awaiting_input(
         # Track which tool triggered AWAITING_INPUT so post_tool_use only
         # resumes when the matching tool completes (not unrelated tools)
         if tool_name:
-            _awaiting_tool_for_agent[agent.id] = tool_name
+            get_agent_hook_state().set_awaiting_tool(agent.id, tool_name)
 
         # Commit turn FIRST — turn must survive even if state transition fails.
         _helpers.db.session.commit()
@@ -411,7 +411,7 @@ def process_pre_tool_use(
                 trigger="hook:pre_tool_use:stale_awaiting_recovery",
                 confidence=0.9,
             )
-            _awaiting_tool_for_agent.pop(agent.id, None)
+            get_agent_hook_state().clear_awaiting_tool(agent.id)
             _helpers.db.session.commit()
             _helpers.broadcast_card_refresh(agent, "pre_tool_use_recovery")
             _helpers._broadcast_state_change(

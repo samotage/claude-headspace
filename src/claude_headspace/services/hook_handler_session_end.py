@@ -9,11 +9,7 @@ from datetime import datetime, timezone
 from ..models.agent import Agent
 from ..models.command import CommandState
 from . import hook_receiver_helpers as _helpers
-from .hook_receiver_proxies import (
-    _awaiting_tool_for_agent,
-    _progress_texts_for_agent,
-    _transcript_positions,
-)
+from .hook_agent_state import get_agent_hook_state
 from .hook_receiver_types import HookEventResult, HookEventType, get_receiver_state
 
 logger = logging.getLogger(__name__)
@@ -35,9 +31,9 @@ def process_session_end(
         )
         agent.last_seen_at = now
         agent.ended_at = now
-        _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking
-        _transcript_positions.pop(agent.id, None)
-        _progress_texts_for_agent.pop(agent.id, None)
+        get_agent_hook_state().clear_awaiting_tool(agent.id)
+        get_agent_hook_state().clear_transcript_position(agent.id)
+        get_agent_hook_state().consume_progress_texts(agent.id)
 
         # Clear skill injection idempotency record
         from .skill_injector import clear_injection_record

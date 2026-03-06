@@ -10,13 +10,13 @@ from ..models.agent import Agent
 from ..models.command import CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from . import hook_receiver_helpers as _helpers
+from .hook_agent_state import get_agent_hook_state
 from .hook_extractors import (
     capture_plan_write as _capture_plan_write,
 )
 from .hook_extractors import (
     mark_question_answered as _mark_question_answered,
 )
-from .hook_receiver_proxies import _awaiting_tool_for_agent
 from .hook_receiver_types import (
     INFERRED_COMMAND_COOLDOWN_SECONDS,
     USER_INTERACTIVE_TOOLS,
@@ -184,7 +184,7 @@ def process_post_tool_use(
             # Only resume if the completing tool matches the one that triggered
             # AWAITING_INPUT. Otherwise a parallel/unrelated tool completion
             # would incorrectly clear the pending user interaction.
-            awaiting_tool = _awaiting_tool_for_agent.get(agent.id)
+            awaiting_tool = get_agent_hook_state().get_awaiting_tool(agent.id)
             if awaiting_tool and tool_name != awaiting_tool:
                 # Different tool completed — preserve AWAITING_INPUT.
                 # Don't broadcast card_refresh here: nothing changed, and doing so
@@ -203,7 +203,7 @@ def process_post_tool_use(
 
             # Resume: matching tool completed (or no tracking) — user answered
             _mark_question_answered(current_command)
-            _awaiting_tool_for_agent.pop(agent.id, None)
+            get_agent_hook_state().clear_awaiting_tool(agent.id)
             # Detect plan approval via post_tool_use resume
             if current_command.plan_content and not current_command.plan_approved_at:
                 current_command.plan_approved_at = datetime.now(timezone.utc)

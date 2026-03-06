@@ -10,11 +10,7 @@ from ..models.agent import Agent
 from ..models.command import CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from . import hook_receiver_helpers as _helpers
-from .hook_receiver_proxies import (
-    _awaiting_tool_for_agent,
-    _progress_texts_for_agent,
-    _transcript_positions,
-)
+from .hook_agent_state import get_agent_hook_state
 from .hook_receiver_types import HookEventResult, HookEventType, get_receiver_state
 from .team_content_detector import is_team_internal_content
 
@@ -84,7 +80,7 @@ def process_stop(
         # Turn without tool_input (shadowing the structured options) or
         # complete the command entirely — both destroy the respond widget.
         if current_command.state == CommandState.AWAITING_INPUT:
-            awaiting_tool = _awaiting_tool_for_agent.get(agent.id)
+            awaiting_tool = get_agent_hook_state().get_awaiting_tool(agent.id)
             if awaiting_tool:
                 _helpers.db.session.commit()
                 _helpers.broadcast_card_refresh(agent, "stop")
@@ -134,11 +130,11 @@ def process_stop(
         # content in the voice bridge chat.  full_agent_text retains everything
         # for intent detection and command.full_output.
         full_agent_text = agent_text
-        captured = _progress_texts_for_agent.pop(agent.id, None)
+        captured = get_agent_hook_state().consume_progress_texts(agent.id)
         completion_text = agent_text
         all_captured_by_progress = False
         if captured:
-            pos = _transcript_positions.get(agent.id, 0)
+            pos = get_agent_hook_state().get_transcript_position(agent.id) or 0
             if pos > 0 and agent.transcript_path:
                 from .transcript_reader import read_new_entries_from_position
 
@@ -162,7 +158,7 @@ def process_stop(
                 f"progress_dedup: captured={len(captured)} turns, "
                 f"full_len={len(full_agent_text)}, completion_len={len(completion_text)}"
             )
-        _transcript_positions.pop(agent.id, None)
+        get_agent_hook_state().clear_transcript_position(agent.id)
 
         try:
             from flask import current_app

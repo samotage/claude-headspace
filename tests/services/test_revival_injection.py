@@ -11,11 +11,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from claude_headspace.services.hook_agent_state import reset_agent_hook_state
 from claude_headspace.services.hook_receiver import (
     HookMode,
-    _awaiting_tool_for_agent,
-    _deferred_stop_pending,
-    _respond_pending_for_agent,
     get_receiver_state,
     process_session_start,
 )
@@ -30,9 +28,7 @@ def fresh_state():
     state.last_event_type = None
     state.mode = HookMode.POLLING_FALLBACK
     state.events_received = 0
-    _awaiting_tool_for_agent.clear()
-    _respond_pending_for_agent.clear()
-    _deferred_stop_pending.clear()
+    reset_agent_hook_state()
     yield state
 
 

@@ -8,17 +8,24 @@ import pytest
 
 from claude_headspace.models.command import CommandState
 from claude_headspace.models.turn import TurnActor, TurnIntent
+from claude_headspace.services.hook_agent_state import (
+    get_agent_hook_state,
+    reset_agent_hook_state,
+)
+from claude_headspace.services.hook_extractors import (
+    extract_question_text as _extract_question_text,
+)
+from claude_headspace.services.hook_extractors import (
+    extract_structured_options as _extract_structured_options,
+)
+from claude_headspace.services.hook_extractors import (
+    synthesize_permission_options as _synthesize_permission_options,
+)
 from claude_headspace.services.hook_receiver import (
     HookEventResult,
     HookEventType,
     HookMode,
-    _awaiting_tool_for_agent,
-    _deferred_stop_pending,
-    _extract_question_text,
-    _extract_structured_options,
-    _respond_pending_for_agent,
     _schedule_deferred_stop,
-    _synthesize_permission_options,
     configure_receiver,
     get_receiver_state,
     process_notification,
@@ -58,9 +65,7 @@ def fresh_state():
     state.last_event_type = None
     state.mode = HookMode.POLLING_FALLBACK
     state.events_received = 0
-    _awaiting_tool_for_agent.clear()
-    _respond_pending_for_agent.clear()
-    _deferred_stop_pending.clear()
+    reset_agent_hook_state()
     yield state
 
 
@@ -1687,7 +1692,7 @@ class TestProcessPostToolUse:
         mock_lifecycle.get_current_command.return_value = mock_command
 
         # Simulate: permission_request(Bash) set the awaiting tool
-        _awaiting_tool_for_agent[mock_agent.id] = "Bash"
+        get_agent_hook_state().set_awaiting_tool(mock_agent.id, "Bash")
 
         # Now a Task sub-agent completes — should NOT resume
         result = process_post_tool_use(mock_agent, "session-123", tool_name="Task")
@@ -1721,7 +1726,7 @@ class TestProcessPostToolUse:
         mock_lifecycle.get_pending_summarisations.return_value = []
 
         # Simulate: permission_request(Bash) set the awaiting tool
-        _awaiting_tool_for_agent[mock_agent.id] = "Bash"
+        get_agent_hook_state().set_awaiting_tool(mock_agent.id, "Bash")
 
         # post_tool_use(Bash) — user approved, should resume
         result = process_post_tool_use(mock_agent, "session-123", tool_name="Bash")
@@ -1729,7 +1734,7 @@ class TestProcessPostToolUse:
         assert result.success is True
         mock_lifecycle.process_turn.assert_called_once()
         # Tracking should be cleared
-        assert mock_agent.id not in _awaiting_tool_for_agent
+        assert get_agent_hook_state().get_awaiting_tool(mock_agent.id) is None
 
     @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_pre_tool_use_non_interactive_no_state_change(
@@ -2029,7 +2034,7 @@ class TestDeferredStopPolling:
 
         mock_lifecycle.complete_command.side_effect = set_complete
 
-        _deferred_stop_pending.clear()
+        reset_agent_hook_state()
 
         mock_agent = MagicMock()
         mock_agent.id = 42
@@ -2102,7 +2107,7 @@ class TestDeferredStopPolling:
         mock_lifecycle = MagicMock()
         mock_get_lm.return_value = mock_lifecycle
 
-        _deferred_stop_pending.clear()
+        reset_agent_hook_state()
 
         mock_agent = MagicMock()
         mock_agent.id = 43
@@ -2122,23 +2127,25 @@ class TestDeferredStopPolling:
 
                 # Target function available via mock_thread.call_args[1]["target"]
 
-        _deferred_stop_pending.clear()
+        reset_agent_hook_state()
 
 
 class TestResetReceiverState:
     """Tests for reset_receiver_state() — clears all module-level state dicts."""
 
     def test_reset_clears_all_module_dicts(self):
-        """reset_receiver_state should clear all three module-level dicts."""
-        _awaiting_tool_for_agent[99] = "Bash"
-        _respond_pending_for_agent[99] = 1.0
-        _deferred_stop_pending.add(99)
+        """reset_receiver_state should clear all agent hook state."""
+        state = get_agent_hook_state()
+        state.set_awaiting_tool(99, "Bash")
+        state.set_respond_pending(99)
+        state.try_claim_deferred_stop(99)
 
         reset_receiver_state()
 
-        assert len(_awaiting_tool_for_agent) == 0
-        assert len(_respond_pending_for_agent) == 0
-        assert len(_deferred_stop_pending) == 0
+        state = get_agent_hook_state()
+        assert state.get_awaiting_tool(99) is None
+        assert not state.is_respond_pending(99)
+        assert not state.is_deferred_stop_pending(99)
 
     def test_deferred_stop_deduplication(self):
         """_schedule_deferred_stop should not spawn duplicate threads for the same agent."""
@@ -2153,7 +2160,7 @@ class TestResetReceiverState:
         mock_command = MagicMock()
         mock_command.id = 100
 
-        _deferred_stop_pending.clear()
+        reset_agent_hook_state()
 
         app = Flask(__name__)
         with app.app_context():
@@ -2171,7 +2178,7 @@ class TestResetReceiverState:
                 _schedule_deferred_stop(mock_agent, mock_command)
                 assert mock_thread.call_count == 1  # Still just 1
 
-        _deferred_stop_pending.clear()
+        reset_agent_hook_state()
 
 
 # ---------------------------------------------------------------------------
@@ -2273,17 +2280,14 @@ class TestStopHookProgressDedup:
         mock_extract.return_value = agent_text
 
         # Pre-populate captured progress texts with the fragments
-        from claude_headspace.services.hook_receiver import (
-            _progress_texts_for_agent,
-            _transcript_positions,
-        )
+        _state = get_agent_hook_state()
 
-        _progress_texts_for_agent[42] = [
+        _state._progress_texts[42] = [
             progress_turn1.text,
             progress_turn2.text,
             progress_turn3.text,
         ]
-        _transcript_positions[42] = 999  # Position past all entries
+        _state.set_transcript_position(42, 999)  # Position past all entries
 
         # Mock read_new_entries to return empty (all captured)
         # Also mock is_content_duplicate to return False (fragments don't match full text)
@@ -2356,13 +2360,9 @@ class TestStopHookProgressDedup:
         mock_extract.return_value = full_text
 
         # No captured progress — all text is new
-        from claude_headspace.services.hook_receiver import (
-            _progress_texts_for_agent,
-            _transcript_positions,
-        )
-
-        _progress_texts_for_agent.pop(43, None)
-        _transcript_positions.pop(43, None)
+        _state = get_agent_hook_state()
+        _state.consume_progress_texts(43)
+        _state.clear_transcript_position(43)
 
         with patch(
             "claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager"

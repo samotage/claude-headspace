@@ -31,40 +31,8 @@ from .team_content_detector import is_team_internal_content
 logger = logging.getLogger(__name__)
 
 
-def _fetch_context_opportunistically(agent):
-    """Update agent's context columns from tmux pane if stale (>15s)."""
-    if not agent.tmux_pane_id or agent.ended_at is not None:
-        return
-    try:
-        from flask import current_app
-
-        config = current_app.config.get("APP_CONFIG", {})
-        if not config.get("context_monitor", {}).get("enabled", True):
-            return
-    except RuntimeError:
-        return
-    if agent.context_updated_at:
-        elapsed = (
-            datetime.now(timezone.utc) - agent.context_updated_at
-        ).total_seconds()
-        if elapsed < 15:
-            return
-    from . import tmux_bridge
-    from .context_parser import parse_context_usage
-
-    pane_text = tmux_bridge.capture_pane(agent.tmux_pane_id, lines=5)
-    if not pane_text:
-        return
-    ctx = parse_context_usage(pane_text)
-    if ctx:
-        agent.context_percent_used = ctx["percent_used"]
-        agent.context_remaining_tokens = ctx["remaining_tokens"]
-        agent.context_updated_at = datetime.now(timezone.utc)
-
-
 def broadcast_card_refresh(agent, reason):
-    """Wrapper: opportunistic context fetch + card refresh broadcast."""
-    _fetch_context_opportunistically(agent)
+    """Broadcast a card refresh SSE event. Context polling handled by ContextPoller."""
     _card_state_broadcast(agent, reason)
 
 

@@ -12,12 +12,6 @@ from ..models.turn import TurnActor
 from . import hook_receiver_helpers as _helpers
 from .hook_agent_state import get_agent_hook_state
 from .hook_extractors import mark_question_answered as _mark_question_answered
-from .hook_receiver_proxies import (
-    _awaiting_tool_for_agent,
-    _file_metadata_pending_for_agent,
-    _progress_texts_for_agent,
-    _transcript_positions,
-)
 from .hook_receiver_types import HookEventResult, HookEventType, get_receiver_state
 from .team_content_detector import (
     filter_skill_expansion,
@@ -50,16 +44,16 @@ def process_user_prompt_submit(
             # this, _capture_progress_text sees position=None on the first
             # post_tool_use, initializes to current file size (past any agent text
             # already written), and that text is permanently orphaned.
-            _progress_texts_for_agent.pop(agent.id, None)
+            get_agent_hook_state().consume_progress_texts(agent.id)
             if agent.transcript_path:
                 import os
 
                 try:
-                    _transcript_positions[agent.id] = os.path.getsize(
-                        agent.transcript_path
+                    get_agent_hook_state().set_transcript_position(
+                        agent.id, os.path.getsize(agent.transcript_path)
                     )
                 except OSError:
-                    _transcript_positions.pop(agent.id, None)
+                    get_agent_hook_state().clear_transcript_position(agent.id)
             agent.last_seen_at = datetime.now(timezone.utc)
             _helpers.db.session.commit()
             _helpers.broadcast_card_refresh(
@@ -84,16 +78,16 @@ def process_user_prompt_submit(
         if get_agent_hook_state().is_respond_pending(agent.id):
             # Same as respond_inflight: skip turn/state work but initialize
             # transcript position so progress capture works for this cycle.
-            _progress_texts_for_agent.pop(agent.id, None)
+            get_agent_hook_state().consume_progress_texts(agent.id)
             if agent.transcript_path:
                 import os
 
                 try:
-                    _transcript_positions[agent.id] = os.path.getsize(
-                        agent.transcript_path
+                    get_agent_hook_state().set_transcript_position(
+                        agent.id, os.path.getsize(agent.transcript_path)
                     )
                 except OSError:
-                    _transcript_positions.pop(agent.id, None)
+                    get_agent_hook_state().clear_transcript_position(agent.id)
             agent.last_seen_at = datetime.now(timezone.utc)
             _helpers.db.session.commit()
             _helpers.broadcast_card_refresh(agent, "user_prompt_submit_respond_pending")
@@ -230,8 +224,8 @@ def process_user_prompt_submit(
             )
 
         agent.last_seen_at = datetime.now(timezone.utc)
-        _awaiting_tool_for_agent.pop(agent.id, None)  # Clear pending tool tracking
-        _progress_texts_for_agent.pop(agent.id, None)  # New response cycle
+        get_agent_hook_state().clear_awaiting_tool(agent.id)  # Clear pending tool tracking
+        get_agent_hook_state().consume_progress_texts(agent.id)  # New response cycle
 
         # Handoff intent detection: check the raw prompt text (before
         # filter_skill_expansion or persona-injection label replacement)
@@ -247,9 +241,11 @@ def process_user_prompt_submit(
             import os
 
             try:
-                _transcript_positions[agent.id] = os.path.getsize(agent.transcript_path)
+                get_agent_hook_state().set_transcript_position(
+                    agent.id, os.path.getsize(agent.transcript_path)
+                )
             except OSError:
-                _transcript_positions.pop(agent.id, None)
+                get_agent_hook_state().clear_transcript_position(agent.id)
 
         lifecycle = _helpers._get_lifecycle_manager()
 
@@ -264,7 +260,7 @@ def process_user_prompt_submit(
                     f"plan_approved: agent_id={agent.id}, command_id={current_command.id}"
                 )
 
-        pending_file_meta = _file_metadata_pending_for_agent.pop(agent.id, None)
+        pending_file_meta = get_agent_hook_state().consume_file_metadata_pending(agent.id)
         # When the upload endpoint set file metadata, it includes a clean
         # display text (_display_text) so the turn stores the user's text
         # rather than the raw tmux text (which has the file path prepended).

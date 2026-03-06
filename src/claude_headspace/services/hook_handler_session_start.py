@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from ..models.agent import Agent
 from . import hook_receiver_helpers as _helpers
 from .hook_agent_state import get_agent_hook_state
-from .hook_receiver_proxies import _progress_texts_for_agent, _transcript_positions
 from .hook_receiver_types import HookEventResult, HookEventType, get_receiver_state
 
 logger = logging.getLogger(__name__)
@@ -99,8 +98,8 @@ def process_session_start(
             agent.claude_session_id = claude_session_id
 
         # Reset transcript position tracking for new session
-        _transcript_positions.pop(agent.id, None)
-        _progress_texts_for_agent.pop(agent.id, None)
+        get_agent_hook_state().clear_transcript_position(agent.id)
+        get_agent_hook_state().consume_progress_texts(agent.id)
 
         # Store tmux pane ID and register with availability tracker + watchdog
         if tmux_pane_id:
