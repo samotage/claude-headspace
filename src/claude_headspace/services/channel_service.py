@@ -24,6 +24,29 @@ from ..models.turn import Turn
 
 logger = logging.getLogger(__name__)
 
+# ── Channel Protocol ─────────────────────────────────────────────────────
+# Injected once on channel join as part of the context briefing.
+# Governs agent conduct in group conversations to maximise signal density.
+
+CHANNEL_PROTOCOL = """\
+=== Channel Protocol ===
+You are participating in a group channel. These norms govern your conduct:
+
+1. SUBSTANCE ONLY — Every message must advance the conversation's objective. \
+No filler, no social padding, no "Great point!" without adding substance on top.
+2. BREVITY — Keep messages concise. Long-form analysis only when explicitly requested.
+3. ONE RESPONSE — Respond once per prompt. Do not follow up with unsolicited \
+clarifications or chatter.
+4. SILENCE IS VALID — If you have nothing substantive to add, do not respond. \
+Not every message requires a reply from every participant.
+5. STAY IN LANE — Contribute from your domain expertise. Defer to others on \
+topics outside your role.
+6. NO PARROTING — Do not repeat, rephrase, or echo points already made by \
+another participant. If someone has already said it, move on.
+7. DEFER TO THE EXPERT — If a message is clearly in another participant's \
+domain, let them handle it. Do not offer a weaker version of their expertise.
+=== End Channel Protocol ==="""
+
 
 # ── Error hierarchy ──────────────────────────────────────────────────────
 
@@ -1736,13 +1759,15 @@ class ChannelService:
             .all()
         )
         if not messages:
-            return ""
+            # No history yet, but still inject the channel protocol
+            return CHANNEL_PROTOCOL
 
         messages.reverse()  # Chronological order
 
         lines = [
+            CHANNEL_PROTOCOL + "\n",
             f"=== Context briefing: #{channel.slug} "
-            f"(last {len(messages)} messages) ===\n"
+            f"(last {len(messages)} messages) ===\n",
         ]
         for msg in messages:
             sender = msg.persona.name if msg.persona else "SYSTEM"
