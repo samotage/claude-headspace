@@ -437,15 +437,19 @@ class TestDeliverMessage:
                 == setup_data["persona_c"].id
             )
 
-    def test_queues_for_agents_in_unsafe_states(
+    def test_delivers_to_agents_in_processing_state(
         self,
         app,
         delivery_service,
         db_session,
         setup_data,
     ):
-        """Messages queued for agents in PROCESSING state."""
-        # Put Bob's agent in PROCESSING state
+        """Messages delivered even when agent command state is PROCESSING.
+
+        Command state is not a delivery gate — agents may be idle at the
+        prompt while their command state is stale (e.g. channel relay
+        responses don't always trigger lifecycle transitions).
+        """
         cmd = Command(
             agent_id=setup_data["agent_b"].id,
             state=CommandState.PROCESSING,
@@ -466,16 +470,11 @@ class TestDeliverMessage:
 
         with patch.object(delivery_service, "_deliver_to_agent") as mock_tmux:
             mock_tmux.return_value = True
-            # Mock commander availability to return True for all
-            with patch.object(
-                app.extensions.get("commander_availability", MagicMock()),
-                "is_available",
-                return_value=True,
-            ):
-                delivery_service.deliver_message(message, setup_data["channel"])
+            delivery_service.deliver_message(message, setup_data["channel"])
 
-        # Bob should have a queued message (unsafe state)
-        assert delivery_service._dequeue(setup_data["agent_b"].id) == message.id
+        # Bob should have been delivered to directly, not queued
+        assert delivery_service._dequeue(setup_data["agent_b"].id) is None
+        mock_tmux.assert_called()
 
     def test_failure_isolation(
         self,

@@ -380,27 +380,17 @@ class ChannelDeliveryService:
             )
             return
 
-        # Internal agent with tmux — check state safety
-        if not self._is_safe_state(agent):
-            # Queue for later delivery — but still mark as channel-prompted
-            # so the agent's completion response gets relayed back to the
-            # channel. The agent was prompted by a channel conversation even
-            # if the message delivery is deferred.
-            current_cmd = agent.get_current_command()
-            cmd_state = current_cmd.state.value if current_cmd else "NO_CMD"
-            self._enqueue(agent.id, message.id)
-            self._channel_prompted.add(agent.id)
-            logger.info(
-                f"[DELIVERY_FORENSIC] QUEUED message {message.id} for agent "
-                f"{agent.id} (unsafe state={cmd_state}, persona_id={agent.persona_id}), "
-                f"channel_prompted set={sorted(self._channel_prompted)}"
-            )
-            return
-
-        # Safe state — deliver immediately
+        # Deliver immediately — command state is not used as a gate.
+        # The state machine can be stale (e.g. stuck in PROCESSING when
+        # the agent is actually idle) because channel relay responses
+        # don't always trigger command lifecycle transitions.  The tmux
+        # bridge handles the mechanics of text injection safely.
+        current_cmd = agent.get_current_command()
+        cmd_state = current_cmd.state.value if current_cmd else "NO_CMD"
         logger.info(
             f"[DELIVERY_FORENSIC] Attempting tmux delivery to agent {agent.id} "
-            f"(persona_id={agent.persona_id}, pane={agent.tmux_pane_id})"
+            f"(persona_id={agent.persona_id}, pane={agent.tmux_pane_id}, "
+            f"cmd_state={cmd_state})"
         )
         delivered = self._deliver_to_agent(agent, envelope)
         if delivered:
