@@ -212,7 +212,9 @@ class ChannelDeliveryService:
     ) -> bool:
         """Deliver a formatted envelope to a single agent via tmux.
 
-        Checks CommanderAvailability and agent state before delivery.
+        CommanderAvailability is advisory — if the cache says unavailable
+        but the agent has a valid tmux_pane_id, we still attempt delivery.
+        The tmux bridge call itself is the ground truth.
 
         Args:
             agent: The target agent.
@@ -225,14 +227,13 @@ class ChannelDeliveryService:
             logger.warning(f"Cannot deliver to agent {agent.id}: no tmux_pane_id")
             return False
 
-        # Check pane health via CommanderAvailability
+        # Log CommanderAvailability status as advisory info
         commander = self.app.extensions.get("commander_availability")
         if commander and not commander.is_available(agent.id):
-            logger.warning(
-                f"Cannot deliver to agent {agent.id}: pane unavailable "
-                f"(CommanderAvailability)"
+            logger.info(
+                f"CommanderAvailability cache says agent {agent.id} unavailable "
+                f"— attempting tmux delivery anyway (pane={agent.tmux_pane_id})"
             )
-            return False
 
         # Deliver via tmux bridge
         tmux_bridge = self.app.extensions.get("tmux_bridge")
