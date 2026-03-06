@@ -7,7 +7,7 @@ validation:
 ## Product Requirements Document (PRD) — Channel Creation Redesign + Member Pills
 
 **Project:** Claude Headspace v3.2
-**Scope:** Epic 9, Sprint 11 — Redesign channel group chat creation to always spin up new agents from personas; add per-member pills to the channel chat header
+**Scope:** Epic 9, Sprint 11 — Redesign channel group chat creation to always spin up new agents from personas; add per-member pills to the channel chat header. Primary surface: voice chat app. Secondary surface: dashboard. Shared backend.
 **Author:** Mel (workshopped with Sam and Robbo)
 **Status:** Draft
 
@@ -31,13 +31,15 @@ The designed intent — confirmed in this workshop — is that channel creation 
 
 The member pills gap has been requested before. The channel header telling the operator there are "3 members" without naming them is a usability hole — the operator can't see who is in the channel without opening something else, and can't navigate to an agent's session directly from the panel header.
 
+**Target surfaces:** The voice chat application (`static/voice/`) is the primary implementation surface — the "add member" kebab action already exists there but returns "picker not yet available." The dashboard (`_channel_chat_panel.html`) is a secondary surface that receives the same functionality. Both surfaces share the same backend. The voice chat app is where the immediate gap is felt; the dashboard should be kept in parity.
+
 ### 1.2 Target User
 
 The operator (Sam), who creates and manages group channels and needs both a cleaner creation flow and better situational awareness inside the channel chat panel.
 
 ### 1.3 Success Moment
 
-Sam clicks "New Channel" on the channel admin page. A popup appears. He selects the project, checks three personas from a list, and clicks "Create Channel." The channel appears immediately in `pending` state with the message "Channel initiating…" As each agent comes online, their pill appears in the header: "1 of 3 online" → "2 of 3 online" → "3 of 3 online." When all three are connected, the go-signal message appears ("Green light — let's go" or similar) and the chat input unlocks. Sam can click any pill in the header to jump straight to that agent's iTerm session.
+Sam is in the voice chat app. He clicks the kebab menu on a channel and selects "Add member" — instead of "picker not yet available," a popup appears. He selects the project, picks a persona, and confirms. The new agent spins up, their pill appears in the channel header, and the go-signal fires when everyone is connected. Sam clicks any pill to jump straight to that agent's iTerm session. The same flow works from the dashboard channel chat panel.
 
 ---
 
@@ -252,11 +254,12 @@ The existing `ChannelMembership` model supports pending state via nullable `agen
 | ChannelService | E9-S4 | Done | Channel creation, membership management |
 | API endpoints | E9-S5 | Done | REST API for channels |
 | Delivery engine | E9-S6 | Done | Fan-out to channel members |
-| Dashboard UI | E9-S7 | Done | Channel cards, chat panel |
-| Channel admin page | E9-S9 | Done | "New Channel" action trigger point |
+| Dashboard UI | E9-S7 | Done | Channel cards, chat panel (secondary surface) |
+| Channel admin page | E9-S9 | Done | Dashboard "New Channel" action trigger point |
 | Promote to group | E9-S10 | Done | Established always-spin-up pattern for group membership |
 | Agent lifecycle | Existing | Done | Agent creation/spin-up |
 | Focus API | Existing | Done | `/api/focus/<agent_id>` — pill click-through |
+| Voice chat app | Existing | Done | Primary surface (`static/voice/`); "add member" kebab exists, picker not yet implemented |
 
 ### Prior Sprint Modifications
 
@@ -305,3 +308,4 @@ S11 supersedes and extends the following prior-sprint decisions:
 | 1.0     | 2026-03-06 | Mel    | Initial PRD from workshop #workshop-create-channel-chat-17 with Sam and Robbo |
 | 1.1     | 2026-03-06 | Robbo  | Added Prior Sprint Modifications table; conflict resolution against S9/S10/S5 |
 | 1.2     | 2026-03-06 | Robbo  | Workshop remediation: removed implementation-detail language from NFR4 and backend requirements; trimmed Prior Sprint Modifications to essentials; removed Potential Gaps to Verify (converted to service-layer note in NFR4) |
+| 1.3     | 2026-03-06 | Robbo  | Added dual-surface clarification: voice chat app is primary surface, dashboard is secondary; both share the same backend; "add member" kebab exists in voice chat but picker is not yet implemented |
