@@ -79,7 +79,6 @@ window.VoiceChannelChat = (function () {
 
     var nameEl = document.getElementById('channel-chat-name');
     var badgeEl = document.getElementById('channel-chat-type-badge');
-    var memberCountEl = document.getElementById('channel-chat-member-count');
 
     var channelName = slug;
     var channels = VoiceState.channels;
@@ -100,10 +99,7 @@ window.VoiceChannelChat = (function () {
 
     var membersPromise = VoiceAPI.getChannelMembers(slug).then(function (members) {
       VoiceState.channelMembers = members || [];
-      if (memberCountEl) {
-        var count = VoiceState.channelMembers.length;
-        memberCountEl.textContent = count + ' member' + (count !== 1 ? 's' : '');
-      }
+      _renderMemberPills(VoiceState.channelMembers);
     }).catch(function (err) {
       console.error('[ChannelChat] Failed to fetch members for', slug, err);
       VoiceState.channelMembers = [];
@@ -436,7 +432,8 @@ window.VoiceChannelChat = (function () {
         window.open('/api/channels/' + encodeURIComponent(slug) + '/transcript', '_blank');
         break;
       case 'add-member':
-        _showChannelSystemMessage('Member picker not yet available in voice app. Use the dashboard to add members.');
+        VoiceState.addMemberTargetSlug = slug;
+        VoiceSidebar.openChannelPicker('add-member');
         break;
       case 'info':
         window.open('/?channel=' + encodeURIComponent(slug), '_blank');
@@ -542,6 +539,95 @@ window.VoiceChannelChat = (function () {
     }
   }
 
+  // --- Member pills ---
+
+  function _renderMemberPills(memberships) {
+    var container = document.getElementById('channel-chat-member-pills');
+    if (!container) return;
+    var html = '';
+    var connected = 0, total = 0;
+    for (var i = 0; i < memberships.length; i++) {
+      var m = memberships[i];
+      if (m.is_chair) continue; // operator chair pill is optional — skip
+      total++;
+      var pending = !m.agent_id;
+      if (!pending) connected++;
+      var name = m.persona_name || m.persona_slug || 'Unknown';
+      if (pending) {
+        html += '<span class="channel-member-pill pending" title="' + _esc(name) + ' (connecting...)">'
+          + _esc(name) + '</span>';
+      } else {
+        html += '<button class="channel-member-pill" data-agent-id="' + m.agent_id
+          + '" title="Focus ' + _esc(name) + '">'
+          + _esc(name) + '</button>';
+      }
+    }
+    if (total > 0) {
+      html += '<span class="channel-member-count">' + connected + ' of ' + total + ' online</span>';
+    }
+    container.innerHTML = html;
+    // Bind focus clicks
+    container.querySelectorAll('.channel-member-pill[data-agent-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        VoiceAPI.focusAgent(parseInt(btn.getAttribute('data-agent-id'), 10));
+      });
+    });
+  }
+
+  function _esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function onMemberConnected(data) {
+    // Update the specific pending pill to connected state
+    if (!data || !data.persona_slug) return;
+    var container = document.getElementById('channel-chat-member-pills');
+    if (!container) return;
+
+    var pendingPill = container.querySelector('.channel-member-pill.pending');
+    // Find the pending pill matching this persona
+    var pills = container.querySelectorAll('.channel-member-pill.pending');
+    for (var i = 0; i < pills.length; i++) {
+      var pill = pills[i];
+      if (pill.title.indexOf(data.persona_name || data.persona_slug) !== -1
+          || pill.textContent.trim() === (data.persona_name || data.persona_slug)) {
+        pendingPill = pill;
+        break;
+      }
+    }
+    if (pendingPill && data.agent_id) {
+      var name = data.persona_name || data.persona_slug;
+      var newBtn = document.createElement('button');
+      newBtn.className = 'channel-member-pill';
+      newBtn.setAttribute('data-agent-id', data.agent_id);
+      newBtn.title = 'Focus ' + name;
+      newBtn.textContent = name;
+      newBtn.addEventListener('click', function () {
+        VoiceAPI.focusAgent(parseInt(data.agent_id, 10));
+      });
+      pendingPill.parentNode.replaceChild(newBtn, pendingPill);
+    }
+
+    // Update count text
+    var countEl = container.querySelector('.channel-member-count');
+    if (countEl && data.connected_count !== undefined && data.total_count !== undefined) {
+      countEl.textContent = data.connected_count + ' of ' + data.total_count + ' online';
+    }
+  }
+
+  function onChannelReady(data) {
+    _showChannelSystemMessage('Channel ready \u2014 all agents connected.');
+    // Enable chat input
+    var input = document.getElementById('channel-chat-input');
+    var sendBtn = document.getElementById('channel-chat-send');
+    if (input) input.disabled = false;
+    if (sendBtn) sendBtn.disabled = false;
+  }
+
   // --- Public API ---
 
   return {
@@ -550,6 +636,8 @@ window.VoiceChannelChat = (function () {
     loadOlderMessages: loadOlderMessages,
     sendMessage: sendMessage,
     showVoiceResult: showVoiceResult,
-    openChannelChatKebab: openChannelChatKebab
+    openChannelChatKebab: openChannelChatKebab,
+    onMemberConnected: onMemberConnected,
+    onChannelReady: onChannelReady
   };
 })();

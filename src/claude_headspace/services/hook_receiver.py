@@ -838,6 +838,23 @@ def process_session_start(
                     f"for agent_id={agent.id}: {e}"
                 )
 
+        # S11: Link agent to pending channel memberships and trigger readiness check.
+        # This handles channels created via create_channel_from_personas where
+        # memberships are created with agent_id=None and channels stay pending
+        # until all agents register.
+        if agent.persona_id:
+            try:
+                from flask import current_app as _app
+
+                channel_svc = _app.extensions.get("channel_service")
+                if channel_svc:
+                    channel_svc.link_agent_to_pending_membership(agent)
+            except Exception as e:
+                logger.debug(
+                    f"session_start: link_agent_to_pending_membership failed "
+                    f"for agent_id={agent.id}: {e}"
+                )
+
         # Inject persona skill files for persona-backed agents with a tmux pane
         if agent.persona_id and agent.tmux_pane_id:
             try:

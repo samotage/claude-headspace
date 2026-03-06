@@ -653,6 +653,28 @@ window.VoiceSSEHandler = (function () {
     }
   }
 
+  function handleChannelMemberConnected(data) {
+    if (!data || !data.slug) return;
+    // Only update pills if we're currently viewing this channel
+    if (VoiceState.currentChannelSlug !== data.slug) return;
+    if (typeof VoiceChannelChat !== 'undefined' && VoiceChannelChat.onMemberConnected) {
+      VoiceChannelChat.onMemberConnected(data);
+    }
+  }
+
+  function handleChannelReady(data) {
+    if (!data || !data.slug) return;
+    // Only handle if viewing this channel
+    if (VoiceState.currentChannelSlug !== data.slug) return;
+    if (typeof VoiceChannelChat !== 'undefined' && VoiceChannelChat.onChannelReady) {
+      VoiceChannelChat.onChannelReady(data);
+    }
+    // Re-render channel list to reflect active status
+    if (typeof VoiceSidebar !== 'undefined' && VoiceSidebar.renderChannelList) {
+      VoiceSidebar.renderChannelList();
+    }
+  }
+
   // --- Public API ---
 
   return {
@@ -672,6 +694,8 @@ window.VoiceSSEHandler = (function () {
     // Channel SSE event handlers
     handleChannelMessage: handleChannelMessage,
     handleChannelUpdate: handleChannelUpdate,
+    handleChannelMemberConnected: handleChannelMemberConnected,
+    handleChannelReady: handleChannelReady,
     // Connection
     updateConnectionIndicator: updateConnectionIndicator,
     catchUpAfterReconnect: catchUpAfterReconnect,

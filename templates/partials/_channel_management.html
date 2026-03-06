@@ -67,13 +67,12 @@
         <div id="channel-mgmt-create-view" class="flex-1 overflow-y-auto p-5 hidden">
             <form id="channel-mgmt-create-form" onsubmit="event.preventDefault(); window.ChannelManagement && window.ChannelManagement.createChannel();">
                 <div class="space-y-4">
-                    <!-- Name -->
+                    <!-- Project -->
                     <div>
-                        <label for="channel-create-name" class="block text-xs text-muted uppercase tracking-wider mb-1">Name *</label>
-                        <input type="text" id="channel-create-name"
-                               class="form-well w-full px-3 py-2 text-sm"
-                               placeholder="e.g. Auth Review"
-                               required>
+                        <label for="channel-create-project" class="block text-xs text-muted uppercase tracking-wider mb-1">Project *</label>
+                        <select id="channel-create-project" class="form-well w-full px-3 py-2 text-sm" required>
+                            <option value="">Select project...</option>
+                        </select>
                     </div>
 
                     <!-- Type -->
@@ -89,20 +88,13 @@
                         </select>
                     </div>
 
-                    <!-- Description -->
+                    <!-- Personas -->
                     <div>
-                        <label for="channel-create-description" class="block text-xs text-muted uppercase tracking-wider mb-1">Description</label>
-                        <textarea id="channel-create-description"
-                                  class="form-well w-full px-3 py-2 text-sm resize-none"
-                                  rows="3"
-                                  placeholder="Optional description..."></textarea>
-                    </div>
-
-                    <!-- Members -->
-                    <div>
-                        <label class="block text-xs text-muted uppercase tracking-wider mb-1">Members</label>
-                        <div id="channel-member-autocomplete" class="relative">
-                            <!-- JS populates: tags + input + dropdown -->
+                        <label class="block text-xs text-muted uppercase tracking-wider mb-1">Personas *</label>
+                        <div id="channel-create-persona-list"
+                             class="border border-border rounded overflow-y-auto bg-surface/30"
+                             style="max-height:240px;">
+                            <div class="text-muted text-xs italic p-3">Select a project to load personas</div>
                         </div>
                     </div>
 

@@ -2412,6 +2412,44 @@ body::after {
     border-color: color-mix(in srgb, var(--cyan) 40%, transparent);
 }
 
+/* S11: clickable connected pill */
+button.channel-chat-member-pill {
+    cursor: pointer;
+    transition: opacity 0.15s;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+button.channel-chat-member-pill:hover {
+    opacity: 0.75;
+    border-color: var(--cyan);
+    color: var(--text-primary);
+}
+
+/* S11: pending pill (agent not yet connected) */
+.channel-member-pill-pending {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    border-radius: 9999px;
+    background: var(--bg-surface);
+    border: 1px dashed var(--border);
+    color: var(--text-muted);
+    white-space: nowrap;
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* S11: member count text */
+.channel-member-count {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-left: 2px;
+    white-space: nowrap;
+}
+
 /* Hide scrollbar on pills row */
 .scrollbar-none {
     -ms-overflow-style: none;

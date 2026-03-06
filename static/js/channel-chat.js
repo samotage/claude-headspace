@@ -706,6 +706,7 @@
 
     /**
      * Render member name pills in the header row.
+     * Shows pending state (dimmed) for non-chair members without an agent_id.
      */
     function _renderMemberPills(members) {
         if (!_memberPillsEl) return;
@@ -716,24 +717,110 @@
             return;
         }
 
+        var nonChairTotal = 0;
+        var nonChairConnected = 0;
+
         members.forEach(function(m) {
-            var pill = document.createElement('span');
-            var name = _escapeHtml(m.persona_name || m.persona_slug || 'Unknown');
+            var name = m.persona_name || m.persona_slug || 'Unknown';
+            var isPending = !m.is_chair && !m.agent_id;
 
             if (m.is_chair) {
-                pill.className = 'channel-chat-member-pill channel-chat-member-pill-chair';
-                pill.innerHTML = name + ' <span class="text-amber">&#9733;</span>';
+                var chairPill = document.createElement('span');
+                chairPill.className = 'channel-chat-member-pill channel-chat-member-pill-chair';
+                chairPill.innerHTML = _escapeHtml(name) + ' <span class="text-amber">&#9733;</span>';
+                _memberPillsEl.appendChild(chairPill);
             } else {
-                pill.className = 'channel-chat-member-pill';
-                pill.textContent = m.persona_name || m.persona_slug || 'Unknown';
+                nonChairTotal++;
+                if (m.agent_id) {
+                    nonChairConnected++;
+                    // Connected member — clickable to focus
+                    var btn = document.createElement('button');
+                    btn.className = 'channel-chat-member-pill';
+                    btn.textContent = name;
+                    btn.title = 'Focus ' + name;
+                    btn.setAttribute('data-agent-id', m.agent_id);
+                    btn.setAttribute('data-persona-slug', m.persona_slug || '');
+                    (function(agentId) {
+                        btn.addEventListener('click', function() {
+                            fetch('/api/focus/' + agentId, { method: 'POST' });
+                        });
+                    })(m.agent_id);
+                    _memberPillsEl.appendChild(btn);
+                } else {
+                    // Pending member — visual indicator
+                    var pendingPill = document.createElement('span');
+                    pendingPill.className = 'channel-chat-member-pill channel-member-pill-pending';
+                    pendingPill.textContent = name;
+                    pendingPill.title = name + ' (connecting...)';
+                    pendingPill.setAttribute('data-persona-slug', m.persona_slug || '');
+                    _memberPillsEl.appendChild(pendingPill);
+                }
             }
-
-            if (m.status !== 'active') {
-                pill.style.opacity = '0.5';
-            }
-
-            _memberPillsEl.appendChild(pill);
         });
+
+        // Add count text if there are non-chair members
+        if (nonChairTotal > 0) {
+            var countEl = document.createElement('span');
+            countEl.className = 'channel-member-count text-xs text-muted ml-1';
+            countEl.textContent = nonChairConnected + ' of ' + nonChairTotal + ' online';
+            _memberPillsEl.appendChild(countEl);
+        }
+    }
+
+    /**
+     * Handle channel_member_connected SSE event.
+     * Updates the pending pill to connected state and refreshes count.
+     */
+    function onMemberConnected(data) {
+        if (!data || !_activeChannelSlug || data.slug !== _activeChannelSlug) return;
+        _getElements();
+        if (!_memberPillsEl) return;
+
+        // Find the pending pill for this persona
+        var personaSlug = data.persona_slug || '';
+        var agentId = data.agent_id;
+        var pendingPill = _memberPillsEl.querySelector(
+            '.channel-member-pill-pending[data-persona-slug="' + personaSlug + '"]'
+        );
+        if (pendingPill && agentId) {
+            var name = data.persona_name || personaSlug || 'Unknown';
+            var btn = document.createElement('button');
+            btn.className = 'channel-chat-member-pill';
+            btn.textContent = name;
+            btn.title = 'Focus ' + name;
+            btn.setAttribute('data-agent-id', agentId);
+            btn.setAttribute('data-persona-slug', personaSlug);
+            btn.addEventListener('click', function() {
+                fetch('/api/focus/' + agentId, { method: 'POST' });
+            });
+            pendingPill.parentNode.replaceChild(btn, pendingPill);
+        }
+
+        // Update count text
+        var countEl = _memberPillsEl.querySelector('.channel-member-count');
+        if (countEl && data.connected_count !== undefined && data.total_count !== undefined) {
+            countEl.textContent = data.connected_count + ' of ' + data.total_count + ' online';
+        }
+    }
+
+    /**
+     * Handle channel_ready SSE event — show system message and enable input.
+     */
+    function onChannelReady(data) {
+        if (!data || !_activeChannelSlug || data.slug !== _activeChannelSlug) return;
+        // Show a system message in the feed
+        var feedEl = document.getElementById('channel-chat-messages');
+        if (feedEl) {
+            var sysMsg = document.createElement('div');
+            sysMsg.className = 'channel-system-message text-center text-xs text-muted italic py-1';
+            sysMsg.textContent = 'Channel ready \u2014 all agents connected.';
+            feedEl.appendChild(sysMsg);
+        }
+        // Enable input
+        var inputEl = document.getElementById('channel-chat-input');
+        var sendEl = document.getElementById('channel-chat-send');
+        if (inputEl) inputEl.disabled = false;
+        if (sendEl) sendEl.disabled = false;
     }
 
     function _loadChannelInfo(slug) {
@@ -949,6 +1036,8 @@
         toggleKebab: toggleKebab,
         completeChannel: completeChannel,
         leaveChannel: leaveChannel,
+        onMemberConnected: onMemberConnected,
+        onChannelReady: onChannelReady,
         get _activeChannelSlug() { return _activeChannelSlug; },
     };
 

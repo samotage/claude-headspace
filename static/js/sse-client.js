@@ -266,6 +266,9 @@
         "synthetic_turn",
         "channel_message",
         "channel_update",
+        "channel_member_connected",
+        "channel_ready",
+        "channel_member_added",
       ];
 
       commonTypes.forEach((type) => {
