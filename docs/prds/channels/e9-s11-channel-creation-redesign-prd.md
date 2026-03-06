@@ -1,219 +1,311 @@
-# PRD: Channel Creation Redesign + Member Pills
-**Epic:** E9 — Channels
-**Sprint:** S11
+---
+validation:
+  status: draft
+  validated_at: null
+---
+
+## Product Requirements Document (PRD) — Channel Creation Redesign + Member Pills
+
+**Project:** Claude Headspace v3.2
+**Scope:** Epic 9, Sprint 11 — Redesign channel group chat creation to always spin up new agents from personas; add per-member pills to the channel chat header
+**Author:** Mel (workshopped with Sam and Robbo)
 **Status:** Draft
-**Author:** Robbo
-**Workshop:** #workshop-create-channel-chat-17 (2026-03-06)
 
 ---
 
-## Problem Statement
+## Executive Summary
 
-Channel group chat creation (V0) required agents to already be running before a channel could be created. This was an acknowledged shortcut. The designed intent is that channel creation spins up new agents from personas — the same way a single agent is created, extended to multi-persona selection.
+Channel group chat creation (V0) required agents to already be running before a channel could be created. This was an acknowledged shortcut. This sprint returns to the designed intent: channel creation always spins up fresh agents from personas, using the same flow the operator already knows from single-agent creation, extended to multi-persona selection.
 
-Additionally, the channel chat panel header shows a plain member count ("3 members") with no per-member identity or iTerm/tmux navigation — a gap that has been requested before and is overdue.
-
----
-
-## Goals
-
-1. **Redesign channel creation** so that selecting personas during channel setup always spins up new agents. No reuse of existing running agents.
-2. **Unify the creation popup** so the same component handles channel creation and post-creation member addition (context-aware, not two separate flows).
-3. **Add member pills to the channel chat header** — one pill per member, clickable via the existing focus API.
-4. **Enable cross-project channel membership** — post-creation, add a persona from a different project.
+Alongside this, the channel chat panel header currently shows a plain member count ("3 members") with no per-member identity or navigation. This sprint replaces that with per-member pills that show who is in the channel and allow the operator to click through to each agent's iTerm/tmux session — consistent with the focus behaviour already present in single-agent chats.
 
 ---
 
-## Out of Scope
+## 1. Context & Purpose
 
-- Reusing existing running agents (explicitly removed — V0 shortcut)
-- Cross-project membership at creation time (post-creation only, by design)
-- Multi-chair model
-- Message editing or deletion
-- Channel type changes post-creation
+### 1.1 Context
 
----
+V0 channel creation was built around pre-existing agents: the operator had to spin up agents independently, then create a channel and attach them. This was a delivery shortcut, not a design intent. It created an awkward two-step flow and left the system dependent on external state (agents being alive and correctly identified at channel creation time).
 
-## Decisions
+The designed intent — confirmed in this workshop — is that channel creation is self-contained: the operator picks a project and selects personas, and the system handles spinning up the corresponding agents. This mirrors the existing single-agent creation flow and extends it naturally to multi-persona selection.
 
-| # | Decision | Rationale |
-|---|---|---|
-| D1 | Channel creation always spins up new agents from personas | Designed intent. V0 shortcut (attach existing agents) is removed. |
-| D2 | Cross-project member addition is post-creation only | Simplicity. Creation stays single-project scoped. |
-| D3 | Channel becomes active only when all agents are connected | Clean readiness model. No partial-active state. |
-| D4 | Same popup component for create and post-creation add | Reuse over duplication. Context-aware: create = multi-select; add = single-select. |
-| D5 | Member pill click uses existing focus API (`/api/focus/<agent_id>`) | Reuse existing behaviour, no new infrastructure needed. |
-| D6 | Chat input locked until all agents connected; pills appear progressively | Readiness is binary (all or nothing) but UX shows incremental progress via pills and count. |
-| D7 | System message injected on initiation and on full readiness | Channel chat is the status surface — no separate loading screen. |
-| D8 | Agent spin-up failure: channel stays pending, system message with failure detail injected | Fail loudly. No silent partial channels. |
+The member pills gap has been requested before. The channel header telling the operator there are "3 members" without naming them is a usability hole — the operator can't see who is in the channel without opening something else, and can't navigate to an agent's session directly from the panel header.
+
+### 1.2 Target User
+
+The operator (Sam), who creates and manages group channels and needs both a cleaner creation flow and better situational awareness inside the channel chat panel.
+
+### 1.3 Success Moment
+
+Sam clicks "New Channel" on the channel admin page. A popup appears. He selects the project, checks three personas from a list, and clicks "Create Channel." The channel appears immediately in `pending` state with the message "Channel initiating…" As each agent comes online, their pill appears in the header: "1 of 3 online" → "2 of 3 online" → "3 of 3 online." When all three are connected, the go-signal message appears ("Green light — let's go" or similar) and the chat input unlocks. Sam can click any pill in the header to jump straight to that agent's iTerm session.
 
 ---
 
-## User Stories
+## 2. Scope
 
-### US1 — Create a channel with new agents
+### 2.1 In Scope
 
-**As** an operator,
-**I want** to create a channel group chat by selecting a project and one or more personas,
-**so that** new agents are spun up for each selected persona and the channel opens ready for interaction.
+- Replace V0 channel creation (attach existing agents) with persona-based spin-up at creation time
+- New channel creation popup: project picker + persona multi-checkbox, mirroring the single-agent creation flow
+- Post-creation member addition: same popup, context-aware (single-select mode), accessible from inside the channel chat panel; project may differ from the channel's original project
+- Channel readiness model: channel blocks in `pending` state until all agents are connected; chat input stays locked until all members are online
+- Progressive status UX: system message on initiation, per-member pills appear as agents connect, member count updates in real-time, go-signal system message when all are ready
+- Spin-up failure handling: failure surfaces as a system message with failure detail in the channel; channel remains `pending`
+- Member pills in the channel chat panel header: one pill per member, clickable via the existing focus API, pending state visually distinct
+- Reuse the same popup component for both channel creation and post-creation member addition
 
-**Acceptance Criteria:**
-- [ ] "New Channel" action opens a popup (project picker → persona multi-checkbox)
-- [ ] Each selected persona results in one new agent being created
-- [ ] Channel status remains `pending` until all agents are connected
-- [ ] Chat input is disabled while channel is `pending`
-- [ ] System message injected immediately on creation: *"Channel initiating…"*
-- [ ] As each agent connects, their pill appears in the header progressively
-- [ ] Member count in header reflects live state: *"1 of 3 members online"* → *"2 of 3 members online"*
-- [ ] When all agents are connected, channel transitions to `active` and a go-signal system message is injected (e.g., *"All members connected — let's go."*)
-- [ ] Chat input becomes enabled on `active` transition
-- [ ] If any agent fails to spin up, a system message is injected with the failure detail; channel remains `pending` and does not proceed
-- [ ] Operator (chair) is added as a member automatically
+### 2.2 Out of Scope
 
-### US2 — Add a persona to an existing channel (same or cross-project)
-
-**As** an operator,
-**I want** to add a new persona to an existing channel after it was created,
-**so that** I can expand the group or bring in a persona from a different project.
-
-**Acceptance Criteria:**
-- [ ] An "Add member" button is visible in the channel chat panel
-- [ ] Clicking it opens the same popup as channel creation (single-select mode, project picker included)
-- [ ] The selected project may differ from the channel's original project
-- [ ] A new agent is spun up for the selected persona
-- [ ] New member appears in the channel once the agent is connected
-- [ ] New member pill appears in the header
-
-### US3 — Member pills in channel chat header
-
-**As** an operator,
-**I want** to see per-member pills in the channel chat panel header,
-**so that** I can identify who is in the channel and navigate directly to their iTerm/tmux session.
-
-**Acceptance Criteria:**
-- [ ] Channel chat panel header shows one pill per active member (not a plain count)
-- [ ] Each pill displays the persona name
-- [ ] Clicking a pill calls the focus API for that member's agent
-- [ ] Pills update in real-time when members are added or agents connect
-- [ ] If an agent is not yet connected (pending), the pill is shown in a distinct visual state (e.g., muted/greyed)
+- Reusing existing running agents at channel creation time (explicitly removed — V0 shortcut)
+- Cross-project member addition at creation time (post-creation only, by design)
+- Removing members from a channel (not requested in this sprint)
+- Agent reconnection if a channel-member agent crashes mid-session
+- Specific wording of system messages (implementer decision, within the "green light, let's go" tone)
+- Specific error message content for spin-up failures (to be determined when failures are encountered in practice)
 
 ---
 
-## Functional Specification
+## 3. Success Criteria
 
-### Popup Component (Shared)
+### 3.1 Functional Success Criteria
 
-One reusable popup, two modes:
+1. Creating a channel from the channel admin page opens a popup with project picker and persona multi-checkbox
+2. Each selected persona results in one new agent being spun up — no reuse of existing agents
+3. Channel status is `pending` and chat input is disabled until all agents are connected
+4. A system message "Channel initiating…" (or similar) is injected immediately on creation
+5. As each agent connects, their pill appears progressively in the channel chat header
+6. Member count in the header reflects live state (e.g., "1 of 3 online")
+7. When all agents are connected, a go-signal system message is injected and chat input becomes enabled
+8. If a spin-up fails, a system message with failure detail is injected; the channel remains `pending`
+9. An "Add member" button is visible in the channel chat panel
+10. Clicking "Add member" opens the same popup in single-select mode; the selected project may differ from the channel's original project
+11. The channel chat panel header shows one pill per member, with click-through to that agent's iTerm/tmux session via the existing focus API
+12. Pills in pending state (agent not yet connected) are visually distinct from connected pills
 
-**Create mode** (triggered from "New Channel"):
-- Step 1: Project picker (single select, required)
-- Step 2: Persona multi-checkbox (filtered to personas with active persona records for the selected project)
-- Step 3: Optional channel name override (auto-generated from persona names if not provided)
-- CTA: "Create Channel"
+### 3.2 Non-Functional Success Criteria
 
-**Add mode** (triggered from channel "Add member" button):
-- Step 1: Project picker (single select, required — may differ from channel's project)
-- Step 2: Persona single-checkbox or single-select (one persona per add operation)
-- CTA: "Add to Channel"
+1. Vanilla JS only — no new framework dependencies or npm packages
+2. All styling uses Tailwind utility classes and existing custom properties; new custom CSS goes in `static/css/src/input.css`
+3. No new database migrations required (existing `ChannelMembership.agent_id` nullable field supports pending state)
+4. Popup component is a single component, not duplicated for the two modes
 
-Both modes use the same project picker and persona picker components. The difference is multi vs. single select and the CTA label.
+---
 
-### Channel Creation Backend
+## 4. Functional Requirements (FRs)
 
-**Existing route:** `POST /api/channels`
+### Channel Creation
 
-**Change:** When `personas` are provided (as slugs), the service must:
-1. Create the Channel record with status `pending`
-2. For each persona slug: call agent creation (same path as `POST /api/agents`) to spin up a new agent
-3. Create a `ChannelMembership` record for each persona (agent_id will be null initially)
-4. As each agent connects and registers its session, update the membership's `agent_id`
-5. When all memberships have non-null `agent_id`, transition Channel status to `active`
-6. Broadcast SSE `channel_ready` event to trigger UI update
+**FR1: Creation popup — project picker**
+The "New Channel" action opens a popup. Step 1 is a project picker (single-select, required). The list shows all projects the operator has access to.
 
-**No change to `ChannelMembership` model** — `agent_id` is already nullable and updated on agent connect.
+**FR2: Creation popup — persona multi-checkbox**
+Step 2 shows active personas available for the selected project, presented as a multi-checkbox list. At least one persona must be selected to proceed. The CTA is "Create Channel."
 
-**Channel readiness check:** A service method `check_channel_ready(channel_id)` — called after each agent registers — that counts pending memberships and transitions status when count reaches zero.
+**FR3: Agent spin-up at creation**
+When the operator confirms, the system creates the Channel record in `pending` status, then spins up one new agent per selected persona. No existing running agents are attached. Even if a persona already has a running agent, a fresh instance is created.
 
-### Member Pills
+**FR4: Pending state and chat input lock**
+While the channel is `pending`, the chat input is disabled. The operator sees the channel panel but cannot send messages.
 
-**Template:** `templates/partials/_channel_chat_panel.html`
+**FR5: Initiation system message**
+Immediately on channel creation, a system message is injected into the channel: "Channel initiating…" (exact wording is implementer decision within this tone).
 
-**Current:** "3 members" text (static)
-**New:** One `<span>` pill per active membership, styled consistently with agent name pills elsewhere in the dashboard. Each pill:
-- Displays `membership.persona.name`
-- Has `data-agent-id="{{ membership.agent_id }}"` attribute
-- Has `onclick="FocusAPI.focusAgent({{ membership.agent_id }})"` (or equivalent JS handler)
-- Visual state: full opacity if `agent_id` is set; muted if `agent_id` is null (agent not yet connected)
+**FR6: Progressive pill appearance**
+As each agent registers and connects, their member pill appears in the channel chat panel header. Pills appear one by one as agents come online — they do not all appear at once when the channel goes active.
 
-**Real-time updates:** Channel chat panel already receives SSE events. On `card_refresh` or a new `channel_member_added` SSE event, re-render the pill row.
+**FR7: Live member count**
+The header member count reflects real-time state during spin-up: e.g., "1 of 3 online" → "2 of 3 online" → "3 of 3 online."
+
+**FR8: Go-signal system message**
+When all agents are connected and the channel transitions to `active`, a system message is injected signalling readiness (tone: "green light, let's go" — exact wording is implementer decision). Chat input becomes enabled at this point.
+
+**FR9: Spin-up failure handling**
+If any agent fails to spin up, a system message is injected into the channel with the failure detail. The channel remains in `pending` state and does not proceed to `active`. Failure detail content is to be determined when failures are encountered in practice.
 
 ### Post-Creation Member Addition
 
-**Existing route:** `POST /api/channels/<slug>/members`
+**FR10: Add member trigger**
+An "Add member" button or equivalent action is visible in the channel chat panel. It is accessible while the channel is active.
 
-**Change:** Accept `project_id` in the request body (currently membership is implicitly scoped to channel's project). The service resolves the persona within the specified project context and spins up a new agent.
+**FR11: Add member popup — single-select mode**
+The same popup component is reused in single-select mode. Project picker is present and may be set to a project different from the channel's original project. The CTA is "Add to Channel."
 
-**Cross-project agent:** Agent is created under the specified project (not the channel's project). `ChannelMembership.agent_id` is set when the agent connects. The channel's `project_id` FK remains pointing to the original project — cross-project membership is tracked at the membership level via the agent's own project association.
+**FR12: New agent spin-up for added member**
+A new agent is spun up for the selected persona under the specified project. Cross-project membership is tracked at the membership level via the agent's own project association — the channel's original `project_id` FK is not changed.
+
+**FR13: New member appears on connection**
+The new member's pill appears in the header when their agent connects. The channel remains active during this addition — existing members are not blocked.
+
+### Member Pills
+
+**FR14: Per-member pills in header**
+The channel chat panel header displays one pill per channel member. Pills replace the current plain member count text. Each pill displays the persona name.
+
+**FR15: Pill click — focus API**
+Clicking a pill calls the existing focus API (`/api/focus/<agent_id>`) for that member's agent, bringing their iTerm/tmux session to the foreground. This is the same behaviour as the click-to-focus link in single-agent chats.
+
+**FR16: Pending pill state**
+If an agent has not yet connected (agent_id is null on the membership), the pill is shown in a visually distinct pending state (e.g., muted/greyed). A pending pill is not clickable.
+
+**FR17: Real-time pill updates**
+Pills update in real-time via SSE when members are added or agents connect. No page reload required.
 
 ---
 
-## Data Model
+## 5. Non-Functional Requirements (NFRs)
 
-No schema migrations required. The existing `ChannelMembership` model already supports:
-- `agent_id` nullable (pending state while agent spins up)
-- `persona_id` non-null (stable identity, set at creation)
-- `status` field ('active', 'muted', 'left')
+**NFR1: Vanilla JS only**
+All JavaScript follows the existing IIFE pattern. No framework dependencies. No new npm packages.
 
-**One addition to consider:** A `Channel.status` transition to `pending` → `active` on full readiness. This likely already exists (the model has `status: 'pending'|'active'|'complete'|'archived'`). Confirm whether `pending` is already used or if it needs wiring to the readiness check.
+**NFR2: Tailwind CSS styling**
+All styling uses Tailwind utility classes and existing custom properties. New custom CSS goes in `static/css/src/input.css`. Never write to `static/css/main.css` directly.
+
+**NFR3: Reusable popup component**
+The popup serves both creation and add-member flows. It is implemented once and parameterised by mode — not duplicated. Mode determines: multi vs. single persona select, CTA label, and submit behaviour.
+
+**NFR4: No schema migrations**
+The existing `ChannelMembership` model supports pending state via nullable `agent_id`. No new migrations are required. Confirm that `Channel.status = 'pending'` is already plumbed into the readiness transition before building the readiness check service method.
 
 ---
 
-## SSE Events
+## 6. UI Overview
+
+### Channel Creation Popup
+
+```
+┌─────────────────────────────────────────┐
+│  New Channel                         [X]│
+│                                         │
+│  Project                                │
+│  [▼ Select project...              ]    │
+│                                         │
+│  Personas                               │
+│  ┌─────────────────────────────────┐    │
+│  │ ☑ Robbo        Architect        │    │
+│  │ ☑ Con          Builder          │    │
+│  │ ☐ Paula        Recruiter        │    │
+│  │ ☑ Wado         Designer         │    │
+│  └─────────────────────────────────┘    │
+│                                         │
+│              [Cancel]  [Create Channel] │
+└─────────────────────────────────────────┘
+```
+
+### Channel Panel — Pending State
+
+```
+┌──────────────────────────────────────────────┐
+│  Group Channel   [Robbo●] [Con●] [Wado○]     │
+│                  2 of 3 online               │
+├──────────────────────────────────────────────┤
+│                                              │
+│  [system] Channel initiating…               │
+│  [system] Robbo connected.                  │
+│  [system] Con connected.                    │
+│                                              │
+│                                              │
+├──────────────────────────────────────────────┤
+│  [Chat input — disabled]                     │
+└──────────────────────────────────────────────┘
+```
+
+### Channel Panel — Active State
+
+```
+┌──────────────────────────────────────────────┐
+│  Group Channel   [Robbo●] [Con●] [Wado●]     │
+│                  3 of 3 online               │
+├──────────────────────────────────────────────┤
+│                                              │
+│  [system] Channel initiating…               │
+│  [system] Robbo connected.                  │
+│  [system] Con connected.                    │
+│  [system] Wado connected.                   │
+│  [system] Green light — let's go.           │
+│                                              │
+├──────────────────────────────────────────────┤
+│  [Chat input — enabled]              [Send]  │
+└──────────────────────────────────────────────┘
+```
+
+### Creation Flow Sequence
+
+```
+1. Operator clicks "New Channel" on channel admin page
+2. Popup opens → operator selects project
+3. Operator selects personas (multi-checkbox) → clicks "Create Channel"
+4. Channel created in pending state
+5. System message: "Channel initiating…"
+6. Agents spin up; pills appear as each connects
+7. Header count updates: "1 of 3 online" → "2 of 3" → "3 of 3"
+8. System message: "Green light — let's go" (or similar)
+9. Chat input unlocks → channel is usable
+```
+
+---
+
+## 7. Dependencies
+
+| Dependency | Sprint | Status | What It Provides |
+|------------|--------|--------|------------------|
+| Channel data model | E9-S3 | Done | Channel, ChannelMembership, Message tables |
+| ChannelService | E9-S4 | Done | Channel creation, membership management |
+| API endpoints | E9-S5 | Done | REST API for channels |
+| Delivery engine | E9-S6 | Done | Fan-out to channel members |
+| Dashboard UI | E9-S7 | Done | Channel cards, chat panel |
+| Channel admin page | E9-S9 | Done | "New Channel" action trigger point |
+| Promote to group | E9-S10 | Done | Established always-spin-up pattern for group membership |
+| Agent lifecycle | Existing | Done | Agent creation/spin-up |
+| Focus API | Existing | Done | `/api/focus/<agent_id>` — pill click-through |
+
+### Prior Sprint Modifications
+
+S11 supersedes and extends the following prior-sprint decisions. Implementors must be aware of these changes:
+
+| Prior Sprint | What Changes | Details |
+|---|---|---|
+| E9-S9 (Channel Admin Page) | Channel creation UI redesigned | S9 FR8/FR15 defined a simple create form (name, type, description, optional personas). S11 replaces this with a multi-step popup (project picker → persona multi-checkbox). The S9 admin page create form must be replaced with the new popup component. |
+| E9-S9 (Channel Admin Page) | Add member UI gains project picker | S9 FR13 defined add-member without project selection. S11 adds a project picker to the add-member popup to support cross-project membership. |
+| E9-S5 (API Endpoints) | `POST /api/channels/<slug>/members` extended | S5 FR7 defined this endpoint without `project_id`. S11 requires `project_id` in the request body to support cross-project member addition. |
+| E9-S10 (Promote to Group) | Agent spin-up reasoning extended | S10 FR8 established the always-spin-up pattern for promote-to-group. S11 extends this pattern to channel creation. Both decisions are aligned: always spin up a fresh agent regardless of whether the persona has a running instance. |
+
+### Backend Changes Required
+
+- `POST /api/channels`: accept `persona_slugs[]` + `project_id`, spin up agents per persona, create memberships with null `agent_id`, set channel to `pending`
+- Readiness check: `check_channel_ready(channel_id)` — called after each agent registers; transitions channel to `active` and broadcasts `channel_ready` SSE when all memberships have non-null `agent_id`
+- `POST /api/channels/<slug>/members`: accept `project_id` (cross-project support); existing route likely scoped to channel's project only — this is an extension to S5 FR7
+
+### SSE Events
 
 | Event | Trigger | Payload |
 |---|---|---|
-| `channel_created` | Channel record created (existing) | channel slug, name, status |
+| `channel_created` | Channel record created | channel slug, name, status |
 | `channel_ready` | All agents connected, status → active | channel slug |
-| `channel_member_added` | New membership created post-creation | channel slug, persona name, agent_id (may be null) |
-| `channel_member_connected` | Agent connects and membership agent_id updated | channel slug, agent_id |
+| `channel_member_added` | New membership created | channel slug, persona name, agent_id (may be null) |
+| `channel_member_connected` | Agent connects, membership agent_id updated | channel slug, agent_id |
+
+### Potential Gaps to Verify
+
+- Confirm `Channel.status = 'pending'` is already wired to a readiness transition, or determine what plumbing needs to be added
+- Verify `POST /api/channels/<slug>/members` currently accepts or can be extended to accept `project_id` for cross-project membership
 
 ---
 
-## UI Changes
+## 8. Open Decisions
 
-| Component | Change |
-|---|---|
-| Channel admin page (`channels.html`) | Replace current create form with new popup (Create mode) |
-| Channel chat panel header | Replace "N members" text with per-member pills |
-| Channel chat panel | Add "Add member" button → popup (Add mode) |
-| Dashboard channel cards | No change to card rendering; pills are panel-only |
-
----
-
-## Out-of-Scope Deferred Items
-
-- Removing a member from an existing channel (not requested in this sprint)
-- Agent reconnection if a channel-member agent crashes mid-session
-- Multi-project channel creation (cross-project only post-creation, by decision D2)
+| Decision | Options | Status |
+|----------|---------|--------|
+| Exact wording of initiation system message | e.g., "Channel initiating…" | Open — implementer decision within this tone |
+| Exact wording of go-signal system message | e.g., "Green light — let's go." | Open — implementer decision within the "green light, go" tone confirmed by Sam |
+| Exact wording of spin-up failure message | Dependent on failure type | Open — to be determined when failures are encountered in practice (Sam: "we'll deal with it then") |
+| Location of "Add member" trigger in channel panel | Button in header vs. elsewhere in panel | Open — implementer decision; Sam confirmed it exists in the channel view |
+| `Channel.status = pending` readiness wiring | Already exists vs. needs plumbing | Open — verify against existing codebase before building |
 
 ---
 
-## Open Questions
+## Document History
 
-_None. All decisions resolved in workshop session._
-
----
-
-## Workshop Log
-
-| Time | Decision |
-|---|---|
-| 11:05 | Mel and Robbo joined channel |
-| ~11:20 | Sam confirmed: new agents always (V0 shortcut removed) |
-| ~11:25 | Sam confirmed: cross-project post-creation only |
-| ~11:30 | Sam confirmed: block until all agents connected |
-| ~11:35 | Sam confirmed: same popup, context-aware reuse |
-| ~11:40 | Sam confirmed: focus API reuse for pill clicks |
-| ~11:50 | Sam confirmed: chat input locked until all connected; pills appear progressively |
-| ~11:55 | Sam confirmed: system message on initiation; go-signal message on full readiness; tone is "green light, let's go" |
-| ~12:00 | Sam confirmed: spin-up failure → system message with failure detail; channel stays pending |
+| Version | Date       | Author | Changes |
+|---------|------------|--------|---------|
+| 1.0     | 2026-03-06 | Mel    | Initial PRD from workshop #workshop-create-channel-chat-17 with Sam and Robbo |
+| 1.1     | 2026-03-06 | Robbo  | Added Prior Sprint Modifications table; explicit acknowledgement that S11 supersedes S9 create/add-member UI and extends S5 FR7; cross-reference to S10 spin-up pattern |
