@@ -17,7 +17,7 @@ from ..models.agent import Agent
 from ..models.command import CommandState
 from ..models.turn import TurnActor, TurnIntent
 from .advisory_lock import LockNamespace, advisory_lock
-from .hook_receiver import (
+from .hook_receiver_helpers import (
     _broadcast_turn_created,
     _execute_pending_summarisations,
     _extract_transcript_content,

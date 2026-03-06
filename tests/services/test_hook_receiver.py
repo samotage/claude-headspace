@@ -126,7 +126,7 @@ class TestConfigureReceiver:
 
 
 class TestProcessSessionStart:
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_successful_session_start(self, mock_db, mock_agent, fresh_state):
         result = process_session_start(mock_agent, "session-123")
         assert result.success is True
@@ -135,26 +135,26 @@ class TestProcessSessionStart:
         # Two commits: (1) agent fields, (2) post-injection state (prompt_injected_at)
         assert mock_db.session.commit.call_count == 2
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_updates_timestamp(self, mock_db, mock_agent, fresh_state):
         old_time = mock_agent.last_seen_at
         process_session_start(mock_agent, "session-123")
         assert mock_agent.last_seen_at >= old_time
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_records_event(self, mock_db, mock_agent, fresh_state):
         process_session_start(mock_agent, "session-123")
         assert fresh_state.last_event_type == HookEventType.SESSION_START
         assert fresh_state.events_received == 1
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_clears_ended_at(self, mock_db, mock_agent, fresh_state):
         """session_start should clear agent.ended_at for the new session."""
         mock_agent.ended_at = datetime.now(timezone.utc)
         process_session_start(mock_agent, "session-123")
         assert mock_agent.ended_at is None
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_assigns_persona_from_slug(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -170,7 +170,7 @@ class TestProcessSessionStart:
         assert result.success is True
         assert mock_agent.persona_id == 5
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_updates_channel_memberships_on_persona_assign(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -200,7 +200,7 @@ class TestProcessSessionStart:
             {"agent_id": mock_agent.id}
         )
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_channel_membership_update_failure_non_fatal(
         self, mock_db, mock_agent, fresh_state, caplog
     ):
@@ -226,7 +226,7 @@ class TestProcessSessionStart:
         assert mock_agent.persona_id == 5
         assert "channel membership update failed" in caplog.text
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_unknown_persona_slug_logs_warning(
         self, mock_db, fresh_state, caplog
     ):
@@ -258,7 +258,7 @@ class TestProcessSessionStart:
         assert agent.persona_id is None
         assert "unrecognised persona_slug=nonexistent" in caplog.text
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_no_persona_slug_skips_lookup(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -268,7 +268,7 @@ class TestProcessSessionStart:
         assert result.success is True
         MockPersona.query.filter_by.assert_not_called()
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_persona_db_error_graceful(
         self, mock_db, mock_agent, fresh_state, caplog
     ):
@@ -284,7 +284,7 @@ class TestProcessSessionStart:
         assert result.success is True
         assert "DB error during Persona lookup" in caplog.text
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_previous_agent_id_converted_to_int(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -295,7 +295,7 @@ class TestProcessSessionStart:
         assert result.success is True
         assert mock_agent.previous_agent_id == 42
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_invalid_previous_agent_id_logs_warning(
         self, mock_db, mock_agent, fresh_state, caplog
     ):
@@ -309,7 +309,7 @@ class TestProcessSessionStart:
         assert result.success is True
         assert "invalid previous_agent_id" in caplog.text
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_without_persona_or_previous_agent(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -336,7 +336,7 @@ class TestProcessSessionStart:
         assert agent.previous_agent_id is None
 
     @patch("claude_headspace.services.skill_injector.inject_persona_skills")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_triggers_skill_injection_for_persona_agent(
         self, mock_db, mock_inject, mock_agent, fresh_state
     ):
@@ -348,7 +348,7 @@ class TestProcessSessionStart:
         mock_inject.assert_called_once_with(mock_agent)
 
     @patch("claude_headspace.services.skill_injector.inject_persona_skills")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_skips_skill_injection_without_persona(
         self, mock_db, mock_inject, mock_agent, fresh_state
     ):
@@ -363,7 +363,7 @@ class TestProcessSessionStart:
         "claude_headspace.services.skill_injector.inject_persona_skills",
         side_effect=RuntimeError("tmux crashed"),
     )
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_session_start_skill_injection_failure_does_not_block(
         self, mock_db, mock_inject, mock_agent, fresh_state, caplog
     ):
@@ -377,8 +377,8 @@ class TestProcessSessionStart:
 
 
 class TestProcessSessionEnd:
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_successful_session_end(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -394,8 +394,8 @@ class TestProcessSessionEnd:
         assert result.state_changed is True
         mock_db.session.commit.assert_called_once()
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_completes_active_command(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -414,8 +414,8 @@ class TestProcessSessionEnd:
 
 
 class TestProcessUserPromptSubmit:
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_creates_command_when_none_exists(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -440,8 +440,8 @@ class TestProcessUserPromptSubmit:
         assert result.success is True
         mock_lifecycle.process_turn.assert_called_once()
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_transitions_to_processing(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -467,7 +467,7 @@ class TestProcessUserPromptSubmit:
         # Should auto-transition COMMANDED → PROCESSING
         mock_lifecycle.update_command_state.assert_called_once()
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_user_prompt_submit_skips_tool_interruption_artifact(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -484,10 +484,10 @@ class TestProcessUserPromptSubmit:
 
 
 class TestProcessStop:
-    @patch("claude_headspace.services.hook_receiver.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.detect_agent_intent")
+    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_successful_stop(
         self, mock_db, mock_get_lm, mock_extract, mock_detect, mock_agent, fresh_state
     ):
@@ -522,10 +522,10 @@ class TestProcessStop:
         assert result.new_state == "complete"
         mock_lifecycle.complete_command.assert_called_once()
 
-    @patch("claude_headspace.services.hook_receiver.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.detect_agent_intent")
+    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_stop_with_question_detected(
         self, mock_db, mock_get_lm, mock_extract, mock_detect, mock_agent, fresh_state
     ):
@@ -564,8 +564,8 @@ class TestProcessStop:
             mock_db.session.add.call_count >= 1
         )  # QUESTION turn added (+ possibly Event)
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_stop_with_no_command_is_noop(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -579,10 +579,10 @@ class TestProcessStop:
         assert result.state_changed is False
         assert result.new_state is None
 
-    @patch("claude_headspace.services.hook_receiver.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.detect_agent_intent")
+    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_end_of_command_detected(
         self, mock_db, mock_get_lm, mock_extract, mock_detect, mock_agent, fresh_state
     ):
@@ -621,7 +621,7 @@ class TestProcessStop:
 
 
 class TestProcessNotification:
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_notification_with_processing_command_transitions(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -638,7 +638,7 @@ class TestProcessNotification:
         assert result.new_state == "AWAITING_INPUT"
         assert mock_command.state == CommandState.AWAITING_INPUT
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_notification_without_active_command_does_not_broadcast(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -650,7 +650,7 @@ class TestProcessNotification:
         assert result.state_changed is False
         assert result.new_state is None
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_notification_after_command_complete_does_not_override(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -662,7 +662,7 @@ class TestProcessNotification:
         assert result.state_changed is False
         assert result.new_state is None
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_notification_with_awaiting_input_command_is_noop(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -678,15 +678,15 @@ class TestProcessNotification:
         assert result.state_changed is False
         assert mock_command.state == CommandState.AWAITING_INPUT
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_notification_updates_timestamp_and_commits(
         self, mock_db, mock_agent, fresh_state
     ):
         process_notification(mock_agent, "session-123")
         mock_db.session.commit.assert_called_once()
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_notification_sends_os_notification_on_transition(
         self, mock_db, mock_get_lifecycle, mock_agent, fresh_state
     ):
@@ -719,8 +719,8 @@ class TestProcessNotification:
             confidence=1.0,
         )
 
-    @patch("claude_headspace.services.hook_receiver._send_notification")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._send_notification")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_notification_does_not_send_os_notification_without_transition(
         self, mock_db, mock_send_notif, mock_agent, fresh_state
     ):
@@ -731,7 +731,7 @@ class TestProcessNotification:
         assert result.state_changed is False
         mock_send_notif.assert_not_called()
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_notification_skips_interruption_artifact(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -766,7 +766,7 @@ class TestHookEventResult:
 
 
 class TestProcessPreToolUse:
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_processing_command_transitions_to_awaiting_input(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -785,7 +785,7 @@ class TestProcessPreToolUse:
         assert result.new_state == "AWAITING_INPUT"
         assert mock_command.state == CommandState.AWAITING_INPUT
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_no_active_command_is_noop(self, mock_db, mock_agent, fresh_state):
         mock_agent.get_current_command.return_value = None
 
@@ -797,7 +797,7 @@ class TestProcessPreToolUse:
         assert result.state_changed is False
         assert result.new_state is None
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_already_awaiting_input_is_noop(self, mock_db, mock_agent, fresh_state):
         from claude_headspace.models.command import CommandState
 
@@ -813,19 +813,19 @@ class TestProcessPreToolUse:
         assert result.state_changed is False
         assert mock_command.state == CommandState.AWAITING_INPUT
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_updates_timestamp_and_commits(self, mock_db, mock_agent, fresh_state):
         process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
         mock_db.session.commit.assert_called_once()
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_records_event(self, mock_db, mock_agent, fresh_state):
         process_pre_tool_use(mock_agent, "session-123", tool_name="AskUserQuestion")
         assert fresh_state.last_event_type == HookEventType.PRE_TOOL_USE
         assert fresh_state.events_received == 1
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_sends_os_notification_on_transition(
         self, mock_db, mock_get_lifecycle, mock_agent, fresh_state
     ):
@@ -868,8 +868,8 @@ class TestProcessPreToolUse:
             confidence=1.0,
         )
 
-    @patch("claude_headspace.services.hook_receiver._send_notification")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._send_notification")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_does_not_send_os_notification_without_transition(
         self, mock_db, mock_send_notif, mock_agent, fresh_state
     ):
@@ -884,7 +884,7 @@ class TestProcessPreToolUse:
 
 
 class TestProcessPermissionRequest:
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_processing_command_transitions_to_awaiting_input(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -901,7 +901,7 @@ class TestProcessPermissionRequest:
         assert result.new_state == "AWAITING_INPUT"
         assert mock_command.state == CommandState.AWAITING_INPUT
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_no_active_command_is_noop(self, mock_db, mock_agent, fresh_state):
         mock_agent.get_current_command.return_value = None
 
@@ -911,7 +911,7 @@ class TestProcessPermissionRequest:
         assert result.state_changed is False
         assert result.new_state is None
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_already_awaiting_input_is_noop(self, mock_db, mock_agent, fresh_state):
         from claude_headspace.models.command import CommandState
 
@@ -925,19 +925,19 @@ class TestProcessPermissionRequest:
         assert result.state_changed is False
         assert mock_command.state == CommandState.AWAITING_INPUT
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_updates_timestamp_and_commits(self, mock_db, mock_agent, fresh_state):
         process_permission_request(mock_agent, "session-123")
         mock_db.session.commit.assert_called_once()
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_records_event(self, mock_db, mock_agent, fresh_state):
         process_permission_request(mock_agent, "session-123")
         assert fresh_state.last_event_type == HookEventType.PERMISSION_REQUEST
         assert fresh_state.events_received == 1
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_sends_os_notification_on_transition(
         self, mock_db, mock_get_lifecycle, mock_agent, fresh_state
     ):
@@ -970,8 +970,8 @@ class TestProcessPermissionRequest:
             confidence=1.0,
         )
 
-    @patch("claude_headspace.services.hook_receiver._send_notification")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._send_notification")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_does_not_send_os_notification_without_transition(
         self, mock_db, mock_send_notif, mock_agent, fresh_state
     ):
@@ -982,7 +982,7 @@ class TestProcessPermissionRequest:
         assert result.state_changed is False
         mock_send_notif.assert_not_called()
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_creates_agent_question_turn_with_tool_input(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -1008,8 +1008,8 @@ class TestProcessPermissionRequest:
         # Permission summarizer generates meaningful text instead of generic "Permission needed: Bash"
         assert added_turn.text == "Bash: rm test"
 
-    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_broadcasts_turn_created_on_transition(
         self, mock_db, mock_broadcast_turn, mock_agent, fresh_state
     ):
@@ -1121,7 +1121,7 @@ class TestExtractStructuredOptions:
 class TestPreToolUseTurnToolInput:
     """Test that pre_tool_use stores tool_input on Turn for AskUserQuestion."""
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_stores_tool_input_on_turn(self, mock_db, mock_agent, fresh_state):
         from claude_headspace.models.command import CommandState
 
@@ -1157,7 +1157,7 @@ class TestPreToolUseTurnToolInput:
         added_turn = mock_db.session.add.call_args_list[0][0][0]
         assert added_turn.tool_input == tool_input
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_tool_input_has_default_options_for_non_ask_user_question(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -1190,7 +1190,7 @@ class TestPreToolUseTurnToolInput:
 
 
 class TestPreToolUseTurnCreation:
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_creates_agent_question_turn_with_ask_user_question(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -1225,8 +1225,8 @@ class TestPreToolUseTurnCreation:
         added_turn = mock_db.session.add.call_args_list[0][0][0]
         assert added_turn.text == "Which approach do you prefer?"
 
-    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_broadcasts_turn_created(
         self, mock_db, mock_broadcast_turn, mock_agent, fresh_state
     ):
@@ -1248,8 +1248,8 @@ class TestPreToolUseTurnCreation:
         assert call_args[1] == "Permission needed: AskUserQuestion"
         assert call_args[2] == mock_command
 
-    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_no_broadcast_without_transition(
         self, mock_db, mock_broadcast_turn, mock_agent, fresh_state
     ):
@@ -1264,7 +1264,7 @@ class TestPreToolUseTurnCreation:
 
 
 class TestNotificationTurnDedup:
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_skips_turn_creation_when_recent_question_exists(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -1301,7 +1301,7 @@ class TestNotificationTurnDedup:
         ]
         assert len(turn_adds) == 0
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_skips_turn_creation_for_notification_events(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -1332,8 +1332,8 @@ class TestNotificationTurnDedup:
         ]
         assert len(turn_adds) == 0
 
-    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_no_turn_broadcast_for_notification(
         self, mock_db, mock_broadcast_turn, mock_agent, fresh_state
     ):
@@ -1358,11 +1358,11 @@ class TestNotificationTurnDedup:
 
 
 class TestStopTurnBroadcast:
-    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
-    @patch("claude_headspace.services.hook_receiver.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver_helpers.detect_agent_intent")
+    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_broadcasts_turn_when_awaiting_input(
         self,
         mock_db,
@@ -1415,11 +1415,11 @@ class TestStopTurnBroadcast:
             question_source_type=mock_turn.question_source_type,
         )
 
-    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
-    @patch("claude_headspace.services.hook_receiver.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver_helpers.detect_agent_intent")
+    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_no_turn_broadcast_when_complete(
         self,
         mock_db,
@@ -1460,8 +1460,8 @@ class TestStopTurnBroadcast:
 
 
 class TestProcessPostToolUse:
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_creates_command_when_no_active_command(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -1493,8 +1493,8 @@ class TestProcessPostToolUse:
         )
         mock_lifecycle.update_command_state.assert_called_once()
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_post_tool_use_skips_inferred_when_recent_command_completed(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -1521,8 +1521,8 @@ class TestProcessPostToolUse:
         assert result.state_changed is False
         mock_lifecycle.create_command.assert_not_called()
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_post_tool_use_creates_inferred_when_old_command_completed(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -1558,8 +1558,8 @@ class TestProcessPostToolUse:
             mock_agent, CommandState.COMMANDED
         )
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_noop_when_already_processing(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -1578,8 +1578,8 @@ class TestProcessPostToolUse:
         mock_lifecycle.create_command.assert_not_called()
         mock_lifecycle.process_turn.assert_not_called()
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_resumes_from_awaiting_input(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -1606,8 +1606,8 @@ class TestProcessPostToolUse:
         assert result.success is True
         mock_lifecycle.process_turn.assert_called_once()
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_post_tool_use_preserves_awaiting_for_exit_plan_mode(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -1630,8 +1630,8 @@ class TestProcessPostToolUse:
         # Should NOT have called process_turn (no resume)
         mock_lifecycle.process_turn.assert_not_called()
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_post_tool_use_resumes_for_normal_tools(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -1660,8 +1660,8 @@ class TestProcessPostToolUse:
         # Should have called process_turn (resume)
         mock_lifecycle.process_turn.assert_called_once()
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_post_tool_use_preserves_awaiting_when_different_tool(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -1686,8 +1686,8 @@ class TestProcessPostToolUse:
         assert result.new_state == CommandState.AWAITING_INPUT.value
         mock_lifecycle.process_turn.assert_not_called()
 
-    @patch("claude_headspace.services.hook_receiver._get_lifecycle_manager")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_post_tool_use_resumes_when_matching_tool(
         self, mock_db, mock_get_lm, mock_agent, fresh_state
     ):
@@ -1721,7 +1721,7 @@ class TestProcessPostToolUse:
         # Tracking should be cleared
         assert mock_agent.id not in _awaiting_tool_for_agent
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_pre_tool_use_non_interactive_no_state_change(
         self, mock_db, mock_agent, fresh_state
     ):
@@ -1859,8 +1859,8 @@ class TestSynthesizePermissionOptions:
 class TestPermissionPaneCapture:
     """Integration tests for permission pane capture in the hook flow."""
 
-    @patch("claude_headspace.services.hook_receiver._synthesize_permission_options")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_handler_awaiting_input._synthesize_permission_options")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_permission_request_uses_synthesized_options(
         self, mock_db, mock_synthesize, mock_agent, fresh_state
     ):
@@ -1898,8 +1898,8 @@ class TestPermissionPaneCapture:
         added_turn = mock_db.session.add.call_args_list[0][0][0]
         assert added_turn.tool_input == synthesized
 
-    @patch("claude_headspace.services.hook_receiver._synthesize_permission_options")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_handler_awaiting_input._synthesize_permission_options")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_permission_request_falls_back_when_synthesis_returns_none(
         self, mock_db, mock_synthesize, mock_agent, fresh_state
     ):
@@ -1926,8 +1926,8 @@ class TestPermissionPaneCapture:
         added_turn = mock_db.session.add.call_args_list[0][0][0]
         assert added_turn.tool_input is None
 
-    @patch("claude_headspace.services.hook_receiver._synthesize_permission_options")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_handler_awaiting_input._synthesize_permission_options")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_pre_tool_use_does_not_call_synthesize(
         self, mock_db, mock_synthesize, mock_agent, fresh_state
     ):
@@ -2166,14 +2166,14 @@ class TestResetReceiverState:
 class TestStopHookProgressDedup:
     """Verify process_stop upgrades PROGRESS turns instead of duplicating."""
 
-    @patch("claude_headspace.services.hook_receiver.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
-    @patch("claude_headspace.services.hook_receiver.broadcast_card_refresh")
-    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
-    @patch("claude_headspace.services.hook_receiver._trigger_priority_scoring")
-    @patch("claude_headspace.services.hook_receiver._broadcast_state_change")
-    @patch("claude_headspace.services.hook_receiver._send_completion_notification")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.detect_agent_intent")
+    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch("claude_headspace.services.hook_receiver_helpers.broadcast_card_refresh")
+    @patch("claude_headspace.services.hook_receiver_helpers._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver_helpers._trigger_priority_scoring")
+    @patch("claude_headspace.services.hook_receiver_helpers._broadcast_state_change")
+    @patch("claude_headspace.services.hook_receiver_helpers._send_completion_notification")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_all_captured_upgrades_progress(
         self,
         mock_db,
@@ -2279,7 +2279,7 @@ class TestStopHookProgressDedup:
         ):
             # Mock lifecycle — ensure it returns OUR command object
             with patch(
-                "claude_headspace.services.hook_receiver._get_lifecycle_manager"
+                "claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager"
             ) as mock_lifecycle_factory:
                 mock_lifecycle = MagicMock()
                 mock_lifecycle.get_current_command.return_value = command
@@ -2293,13 +2293,13 @@ class TestStopHookProgressDedup:
         # The last progress turn's intent should have been upgraded to COMPLETION
         assert progress_turn3.intent == TurnIntent.COMPLETION
 
-    @patch("claude_headspace.services.hook_receiver._extract_transcript_content")
-    @patch("claude_headspace.services.hook_receiver.broadcast_card_refresh")
-    @patch("claude_headspace.services.hook_receiver._broadcast_turn_created")
-    @patch("claude_headspace.services.hook_receiver._trigger_priority_scoring")
-    @patch("claude_headspace.services.hook_receiver._broadcast_state_change")
-    @patch("claude_headspace.services.hook_receiver._send_completion_notification")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch("claude_headspace.services.hook_receiver_helpers.broadcast_card_refresh")
+    @patch("claude_headspace.services.hook_receiver_helpers._broadcast_turn_created")
+    @patch("claude_headspace.services.hook_receiver_helpers._trigger_priority_scoring")
+    @patch("claude_headspace.services.hook_receiver_helpers._broadcast_state_change")
+    @patch("claude_headspace.services.hook_receiver_helpers._send_completion_notification")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_new_text_creates_completion(
         self,
         mock_db,
@@ -2341,7 +2341,7 @@ class TestStopHookProgressDedup:
         _transcript_positions.pop(43, None)
 
         with patch(
-            "claude_headspace.services.hook_receiver._get_lifecycle_manager"
+            "claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager"
         ) as mock_lifecycle_factory:
             mock_lifecycle = MagicMock()
             mock_lifecycle.get_pending_summarisations.return_value = []

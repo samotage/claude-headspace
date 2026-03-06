@@ -290,7 +290,7 @@ class TestConcurrentProgressCapture:
                 errors.append(e)
 
         with patch(
-            "claude_headspace.services.hook_receiver.get_agent_hook_state",
+            "claude_headspace.services.hook_receiver_helpers.get_agent_hook_state",
             return_value=state,
         ):
             threads = [threading.Thread(target=run_capture) for _ in range(3)]

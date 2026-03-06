@@ -127,7 +127,7 @@ def setup_data(app, db_session):
 class TestAgentMembershipLinking:
     """Test FR14: agent_id updated on session start."""
 
-    @patch("claude_headspace.services.hook_receiver.broadcast_card_refresh")
+    @patch("claude_headspace.services.hook_receiver_helpers.broadcast_card_refresh")
     def test_links_agent_to_pending_membership(self, mock_broadcast, app, setup_data):
         """Agent registration links to pending ChannelMembership."""
         target_membership_id = setup_data["target_membership"].id
@@ -162,7 +162,7 @@ class TestAgentMembershipLinking:
 class TestContextBriefingDelivery:
     """Test FR14a: context briefing delivered after linking."""
 
-    @patch("claude_headspace.services.hook_receiver.broadcast_card_refresh")
+    @patch("claude_headspace.services.hook_receiver_helpers.broadcast_card_refresh")
     def test_context_briefing_delivered(self, mock_broadcast, app, setup_data):
         """Context briefing delivered via tmux after agent links to membership."""
         channel_id = setup_data["channel"].id

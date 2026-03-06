@@ -1000,11 +1000,11 @@ class TestHookReceiverIntegration:
             patch.object(delivery, "relay_agent_response") as mock_relay,
             patch.object(delivery, "drain_queue"),
             patch(
-                "claude_headspace.services.hook_receiver._extract_transcript_content",
+                "claude_headspace.services.hook_receiver_helpers._extract_transcript_content",
                 return_value="Done with the task.\n\n---\nCOMMAND COMPLETE — Done.\n---",
             ),
             patch(
-                "claude_headspace.services.hook_receiver.detect_agent_intent",
+                "claude_headspace.services.hook_receiver_helpers.detect_agent_intent",
                 return_value=MagicMock(
                     intent=TurnIntent.COMPLETION,
                     confidence=0.95,
@@ -1019,8 +1019,10 @@ class TestHookReceiverIntegration:
             assert call_kwargs["turn_intent"] == TurnIntent.COMPLETION
             assert call_kwargs["command_id"] == cmd.id
 
-    def test_channel_relay_not_called_for_question(self, app, db_session, setup_data):
-        """Channel relay is NOT called when intent is QUESTION."""
+    def test_channel_relay_called_for_question(self, app, db_session, setup_data):
+        """Channel relay IS called for QUESTION intent — relay_agent_response
+        handles intent filtering internally (channel-prompted agents relay all
+        intents except PROGRESS)."""
         from claude_headspace.services.hook_receiver import process_stop
 
         agent = setup_data["agent_a"]
@@ -1037,11 +1039,11 @@ class TestHookReceiverIntegration:
         with (
             patch.object(delivery, "relay_agent_response") as mock_relay,
             patch(
-                "claude_headspace.services.hook_receiver._extract_transcript_content",
+                "claude_headspace.services.hook_receiver_helpers._extract_transcript_content",
                 return_value="Should I proceed with this approach?",
             ),
             patch(
-                "claude_headspace.services.hook_receiver.detect_agent_intent",
+                "claude_headspace.services.hook_receiver_helpers.detect_agent_intent",
                 return_value=MagicMock(
                     intent=TurnIntent.QUESTION,
                     confidence=0.90,
@@ -1051,7 +1053,9 @@ class TestHookReceiverIntegration:
         ):
             process_stop(agent, "test-session")
 
-            mock_relay.assert_not_called()
+            # QUESTION passes the PROGRESS filter; relay_agent_response is called
+            # and decides internally whether to actually relay based on channel context.
+            mock_relay.assert_called_once()
 
     def test_queue_drain_called_after_completion(self, app, db_session, setup_data):
         """Queue drain is called when command completes."""
@@ -1072,11 +1076,11 @@ class TestHookReceiverIntegration:
             patch.object(delivery, "relay_agent_response", return_value=False),
             patch.object(delivery, "drain_queue") as mock_drain,
             patch(
-                "claude_headspace.services.hook_receiver._extract_transcript_content",
+                "claude_headspace.services.hook_receiver_helpers._extract_transcript_content",
                 return_value="All done.",
             ),
             patch(
-                "claude_headspace.services.hook_receiver.detect_agent_intent",
+                "claude_headspace.services.hook_receiver_helpers.detect_agent_intent",
                 return_value=MagicMock(
                     intent=TurnIntent.COMPLETION,
                     confidence=0.95,
@@ -1205,10 +1209,11 @@ class TestDeferredStopChannelRelay:
 
             mock_drain.assert_called_once_with(agent)
 
-    def test_deferred_stop_no_relay_for_question_intent(
+    def test_deferred_stop_relay_called_for_question_intent(
         self, app, db_session, setup_data
     ):
-        """Verify relay NOT called for QUESTION intent."""
+        """Verify relay IS called for QUESTION intent — relay_agent_response
+        handles intent filtering internally."""
         from claude_headspace.services.hook_agent_state import get_agent_hook_state
         from claude_headspace.services.hook_deferred_stop import (
             _run_deferred_stop_locked,
@@ -1262,7 +1267,7 @@ class TestDeferredStopChannelRelay:
                 delays=[0.5],
             )
 
-            mock_relay.assert_not_called()
+            mock_relay.assert_called_once()
 
 
 # ── Reconciler Channel Drain tests ───────────────────────────────────

@@ -56,7 +56,7 @@ class TestRevivalInjection:
     """Tests for revival injection during session_start."""
 
     @patch("claude_headspace.services.revival_service.db")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_revival_injection_fires_for_revival_successor(
         self, mock_hr_db, mock_rs_db, fresh_state, app
     ):
@@ -91,7 +91,7 @@ class TestRevivalInjection:
                 assert "claude-headspace transcript 5" in revival_msg
                 assert "predecessor" in revival_msg.lower()
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_revival_injection_skipped_for_handoff_successor(
         self, mock_db, fresh_state, app
     ):
@@ -111,7 +111,7 @@ class TestRevivalInjection:
         assert result.success
         # Revival injection should NOT have been attempted
 
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_no_injection_without_previous_agent(self, mock_db, fresh_state, app):
         """No injection when agent has no previous_agent_id."""
         agent = MagicMock()
@@ -132,7 +132,7 @@ class TestRevivalInjection:
         assert result.success
 
     @patch("claude_headspace.services.revival_service.db")
-    @patch("claude_headspace.services.hook_receiver.db")
+    @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_revival_injection_failure_does_not_block(
         self, mock_hr_db, mock_rs_db, fresh_state, app
     ):
