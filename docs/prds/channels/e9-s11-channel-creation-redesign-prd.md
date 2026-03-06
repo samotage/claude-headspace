@@ -164,7 +164,7 @@ All styling uses Tailwind utility classes and existing custom properties. New cu
 The popup serves both creation and add-member flows. It is implemented once and parameterised by mode — not duplicated. Mode determines: multi vs. single persona select, CTA label, and submit behaviour.
 
 **NFR4: No schema migrations**
-The existing `ChannelMembership` model supports pending state via nullable `agent_id`. No new migrations are required. Confirm that `Channel.status = 'pending'` is already plumbed into the readiness transition before building the readiness check service method.
+The existing `ChannelMembership` model supports pending state via nullable `agent_id`. No new migrations are required. The `Channel.status` field already supports the `pending` value — the readiness transition from `pending` to `active` requires service-layer wiring, not a schema change.
 
 ---
 
@@ -260,20 +260,20 @@ The existing `ChannelMembership` model supports pending state via nullable `agen
 
 ### Prior Sprint Modifications
 
-S11 supersedes and extends the following prior-sprint decisions. Implementors must be aware of these changes:
+S11 supersedes and extends the following prior-sprint decisions:
 
-| Prior Sprint | What Changes | Details |
-|---|---|---|
-| E9-S9 (Channel Admin Page) | Channel creation UI redesigned | S9 FR8/FR15 defined a simple create form (name, type, description, optional personas). S11 replaces this with a multi-step popup (project picker → persona multi-checkbox). The S9 admin page create form must be replaced with the new popup component. |
-| E9-S9 (Channel Admin Page) | Add member UI gains project picker | S9 FR13 defined add-member without project selection. S11 adds a project picker to the add-member popup to support cross-project membership. |
-| E9-S5 (API Endpoints) | `POST /api/channels/<slug>/members` extended | S5 FR7 defined this endpoint without `project_id`. S11 requires `project_id` in the request body to support cross-project member addition. |
-| E9-S10 (Promote to Group) | Agent spin-up reasoning extended | S10 FR8 established the always-spin-up pattern for promote-to-group. S11 extends this pattern to channel creation. Both decisions are aligned: always spin up a fresh agent regardless of whether the persona has a running instance. |
+| Prior Sprint | What Changes |
+|---|---|
+| E9-S9 (Channel Admin Page) | Channel creation UI replaced with new popup (project picker + persona multi-checkbox). S9 create form is retired. |
+| E9-S9 (Channel Admin Page) | Add-member UI gains project picker for cross-project membership. |
+| E9-S5 (API Endpoints) | Channel membership endpoint extended to accept a project identifier for cross-project member addition. |
+| E9-S10 (Promote to Group) | Always-spin-up pattern (S10 FR8) extended from promote-to-group to all channel creation flows. |
 
-### Backend Changes Required
+### New Backend Requirements
 
-- `POST /api/channels`: accept `persona_slugs[]` + `project_id`, spin up agents per persona, create memberships with null `agent_id`, set channel to `pending`
-- Readiness check: `check_channel_ready(channel_id)` — called after each agent registers; transitions channel to `active` and broadcasts `channel_ready` SSE when all memberships have non-null `agent_id`
-- `POST /api/channels/<slug>/members`: accept `project_id` (cross-project support); existing route likely scoped to channel's project only — this is an extension to S5 FR7
+- Channel creation accepts a list of persona identifiers and a project reference; spins up one new agent per persona; channel starts in `pending` state
+- Channel service monitors pending agent memberships and transitions channel to `active` when all agents have connected; broadcasts a `channel_ready` SSE event at that point
+- Channel membership endpoint accepts a project reference to enable cross-project member addition
 
 ### SSE Events
 
@@ -281,13 +281,8 @@ S11 supersedes and extends the following prior-sprint decisions. Implementors mu
 |---|---|---|
 | `channel_created` | Channel record created | channel slug, name, status |
 | `channel_ready` | All agents connected, status → active | channel slug |
-| `channel_member_added` | New membership created | channel slug, persona name, agent_id (may be null) |
-| `channel_member_connected` | Agent connects, membership agent_id updated | channel slug, agent_id |
-
-### Potential Gaps to Verify
-
-- Confirm `Channel.status = 'pending'` is already wired to a readiness transition, or determine what plumbing needs to be added
-- Verify `POST /api/channels/<slug>/members` currently accepts or can be extended to accept `project_id` for cross-project membership
+| `channel_member_added` | New membership created | channel slug, persona name, agent connected (boolean) |
+| `channel_member_connected` | Agent connects, membership updated | channel slug |
 
 ---
 
@@ -308,4 +303,5 @@ S11 supersedes and extends the following prior-sprint decisions. Implementors mu
 | Version | Date       | Author | Changes |
 |---------|------------|--------|---------|
 | 1.0     | 2026-03-06 | Mel    | Initial PRD from workshop #workshop-create-channel-chat-17 with Sam and Robbo |
-| 1.1     | 2026-03-06 | Robbo  | Added Prior Sprint Modifications table; explicit acknowledgement that S11 supersedes S9 create/add-member UI and extends S5 FR7; cross-reference to S10 spin-up pattern |
+| 1.1     | 2026-03-06 | Robbo  | Added Prior Sprint Modifications table; conflict resolution against S9/S10/S5 |
+| 1.2     | 2026-03-06 | Robbo  | Workshop remediation: removed implementation-detail language from NFR4 and backend requirements; trimmed Prior Sprint Modifications to essentials; removed Potential Gaps to Verify (converted to service-layer note in NFR4) |
