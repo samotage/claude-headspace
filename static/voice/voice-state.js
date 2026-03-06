@@ -57,6 +57,7 @@ window.VoiceState = (function () {
   var _chatLoadingMore = false;
   var _chatOldestTurnId = null;
   var _chatAgentEnded = false;
+  var _chatAgentPersonaSlug = null;
   var _chatLastCommandId = null;
 
   // ---- Timers & Guards ----
@@ -134,6 +135,7 @@ window.VoiceState = (function () {
     _chatLoadingMore = false;
     _chatOldestTurnId = null;
     _chatAgentEnded = false;
+    _chatAgentPersonaSlug = null;
     _chatLastCommandId = null;
     _chatSyncTimer = null;
     _newMessagesPillVisible = false;
@@ -209,6 +211,8 @@ window.VoiceState = (function () {
     set chatOldestTurnId(v) { _chatOldestTurnId = v; },
     get chatAgentEnded() { return _chatAgentEnded; },
     set chatAgentEnded(v) { _chatAgentEnded = v; },
+    get chatAgentPersonaSlug() { return _chatAgentPersonaSlug; },
+    set chatAgentPersonaSlug(v) { _chatAgentPersonaSlug = v; },
     get chatLastCommandId() { return _chatLastCommandId; },
     set chatLastCommandId(v) { _chatLastCommandId = v; },
 

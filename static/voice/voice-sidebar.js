@@ -638,9 +638,20 @@ window.VoiceSidebar = (function () {
   // --- Persona Picker ---
 
   var _pendingPersonaProject = null;
+  var _pendingPersonaOnSelect = null;
 
-  function showPersonaPicker(projectName, personas) {
+  /**
+   * Show the persona picker modal.
+   *
+   * @param {string|null} projectName - Project name for agent creation (null when using onSelect callback)
+   * @param {Array} personas - Array of persona objects to display
+   * @param {Function} [onSelect] - Optional callback invoked with the selected persona slug.
+   *   When provided, the callback handles the selection instead of the default _doCreateAgent flow.
+   *   The "No persona (default)" option is hidden when onSelect is provided.
+   */
+  function showPersonaPicker(projectName, personas, onSelect) {
     _pendingPersonaProject = projectName;
+    _pendingPersonaOnSelect = onSelect || null;
     var bd = document.getElementById('persona-picker-backdrop');
     var pk = document.getElementById('persona-picker');
     if (bd) bd.classList.add('open');
@@ -650,6 +661,7 @@ window.VoiceSidebar = (function () {
 
   function closePersonaPicker() {
     _pendingPersonaProject = null;
+    _pendingPersonaOnSelect = null;
     var bd = document.getElementById('persona-picker-backdrop');
     var pk = document.getElementById('persona-picker');
     if (bd) bd.classList.remove('open');
@@ -660,13 +672,17 @@ window.VoiceSidebar = (function () {
     var list = document.getElementById('persona-picker-list');
     if (!list) return;
 
-    // "No persona" default option (full width, above grid)
-    var html = '<div class="persona-picker-row persona-picker-default" data-persona-slug="">'
-      + '<div class="persona-picker-info">'
-      + '<div class="persona-picker-name">No persona (default)</div>'
-      + '<div class="persona-picker-desc">Standard Claude agent without persona</div>'
-      + '</div>'
-      + '</div>';
+    var html = '';
+
+    // "No persona" default option — only shown for agent creation flow (no onSelect callback)
+    if (!_pendingPersonaOnSelect) {
+      html += '<div class="persona-picker-row persona-picker-default" data-persona-slug="">'
+        + '<div class="persona-picker-info">'
+        + '<div class="persona-picker-name">No persona (default)</div>'
+        + '<div class="persona-picker-desc">Standard Claude agent without persona</div>'
+        + '</div>'
+        + '</div>';
+    }
 
     // Sort personas by role then name
     var sorted = personas.slice().sort(function(a, b) {
@@ -701,9 +717,14 @@ window.VoiceSidebar = (function () {
     for (var k = 0; k < clickables.length; k++) {
       clickables[k].addEventListener('click', function () {
         var slug = this.getAttribute('data-persona-slug') || null;
+        var callback = _pendingPersonaOnSelect;
         var projName = _pendingPersonaProject;
         closePersonaPicker();
-        if (projName) _doCreateAgent(projName, slug);
+        if (callback) {
+          callback(slug);
+        } else if (projName) {
+          _doCreateAgent(projName, slug);
+        }
       });
     }
   }
@@ -1225,6 +1246,7 @@ window.VoiceSidebar = (function () {
     refreshAgents: refreshAgents,
     openProjectPicker: openProjectPicker,
     closeProjectPicker: closeProjectPicker,
+    showPersonaPicker: showPersonaPicker,
     closePersonaPicker: closePersonaPicker,
     filterProjectList: filterProjectList,
     openChannelPicker: openChannelPicker,

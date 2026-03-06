@@ -1288,6 +1288,7 @@ def agent_transcript(agent_id: int):
             "hero_trail": truncated_uuid[2:] if truncated_uuid else "",
             "tmux_session": agent.tmux_session,
             "persona_name": agent.persona.name if agent.persona else None,
+            "persona_slug": agent.persona.slug if agent.persona else None,
             "persona_role": agent.persona.role.name
             if agent.persona and agent.persona.role
             else None,
