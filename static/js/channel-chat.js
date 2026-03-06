@@ -737,7 +737,11 @@
                     var btn = document.createElement('button');
                     var stateClass = m.agent_state ? 'channel-pill-' + m.agent_state.toLowerCase().replace(/_/g, '-') : '';
                     btn.className = 'channel-chat-member-pill' + (stateClass ? ' ' + stateClass : '');
-                    btn.textContent = name;
+                    var pillLabel = name;
+                    if (m.agent_state_label && m.agent_state && m.agent_state.toLowerCase() !== 'complete') {
+                        pillLabel += ' ' + m.agent_state_label.toLowerCase();
+                    }
+                    btn.textContent = pillLabel;
                     btn.title = m.agent_state_label ? name + ' — ' + m.agent_state_label : 'Focus ' + name;
                     btn.setAttribute('data-agent-id', m.agent_id);
                     btn.setAttribute('data-agent-state', m.agent_state || '');
@@ -804,7 +808,11 @@
             var stateClass = data.agent_state ? 'channel-pill-' + data.agent_state.toLowerCase().replace(/_/g, '-') : '';
             var btn = document.createElement('button');
             btn.className = 'channel-chat-member-pill' + (stateClass ? ' ' + stateClass : '');
-            btn.textContent = name;
+            var pillLabel = name;
+            if (data.agent_state_label && data.agent_state && data.agent_state.toLowerCase() !== 'complete') {
+                pillLabel += ' ' + data.agent_state_label.toLowerCase();
+            }
+            btn.textContent = pillLabel;
             btn.title = data.agent_state_label ? name + ' — ' + data.agent_state_label : 'Focus ' + name;
             btn.setAttribute('data-agent-id', agentId);
             btn.setAttribute('data-agent-state', data.agent_state || '');
@@ -1074,10 +1082,15 @@
         pill.className = classes.join(' ');
         pill.setAttribute('data-agent-state', newState);
 
-        // Update tooltip with state label
-        var stateLabel = data.state_label || newState.replace(/_/g, ' ').toLowerCase();
-        var name = pill.textContent;
-        pill.title = name + ' — ' + stateLabel;
+        // Update pill text and tooltip
+        var stateLabel = (data.state_info && data.state_info.label) || data.state_label || newState.replace(/_/g, ' ').toLowerCase();
+        var personaName = (data.persona_name || pill.textContent.trim().split(' ')[0] || '').trim();
+        if (newState.toLowerCase() !== 'complete') {
+            pill.textContent = personaName + ' ' + stateLabel;
+        } else {
+            pill.textContent = personaName;
+        }
+        pill.title = personaName + ' — ' + stateLabel;
     }
 
     // Public API

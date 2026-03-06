@@ -564,10 +564,14 @@ window.VoiceChannelChat = (function () {
       } else {
         var sc = _stateClass(m.agent_state);
         var tip = m.agent_state_label ? _esc(name) + ' — ' + _esc(m.agent_state_label) : 'Focus ' + _esc(name);
+        var label = name;
+        if (m.agent_state_label && m.agent_state && m.agent_state.toLowerCase() !== 'complete') {
+          label += ' ' + m.agent_state_label.toLowerCase();
+        }
         html += '<button class="channel-member-pill' + sc + '" data-agent-id="' + m.agent_id
           + '" data-agent-state="' + _esc(m.agent_state || '')
           + '" data-has-tmux="' + (m.has_tmux ? 'true' : 'false') + '" title="' + tip + '">'
-          + _esc(name) + '</button>';
+          + _esc(label) + '</button>';
       }
     }
     if (total > 0) {
@@ -622,7 +626,11 @@ window.VoiceChannelChat = (function () {
       newBtn.setAttribute('data-agent-state', data.agent_state || '');
       newBtn.setAttribute('data-has-tmux', data.has_tmux ? 'true' : 'false');
       newBtn.title = data.agent_state_label ? name + ' — ' + data.agent_state_label : 'Focus ' + name;
-      newBtn.textContent = name;
+      var pillLabel = name;
+      if (data.agent_state_label && data.agent_state && data.agent_state.toLowerCase() !== 'complete') {
+        pillLabel += ' ' + data.agent_state_label.toLowerCase();
+      }
+      newBtn.textContent = pillLabel;
       newBtn.addEventListener('click', function () {
         var apiFn = data.has_tmux ? VoiceAPI.attachAgent : VoiceAPI.focusAgent;
         apiFn(parseInt(data.agent_id, 10)).then(function () {
@@ -669,9 +677,15 @@ window.VoiceChannelChat = (function () {
     pill.className = classes.join(' ');
     pill.setAttribute('data-agent-state', newState);
 
-    // Update tooltip
-    var stateLabel = data.state_label || newState.replace(/_/g, ' ').toLowerCase();
-    pill.title = pill.textContent.trim() + ' — ' + stateLabel;
+    // Update pill text — show state after name when not complete
+    var stateLabel = (data.state_info && data.state_info.label) || data.state_label || newState.replace(/_/g, ' ').toLowerCase();
+    var personaName = (data.persona_name || pill.textContent.trim().split(' ')[0] || '').trim();
+    if (newState.toLowerCase() !== 'complete') {
+      pill.textContent = personaName + ' ' + stateLabel;
+    } else {
+      pill.textContent = personaName;
+    }
+    pill.title = personaName + ' — ' + stateLabel;
   }
 
   // --- Public API ---
