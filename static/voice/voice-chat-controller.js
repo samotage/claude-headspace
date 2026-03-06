@@ -135,6 +135,7 @@ window.VoiceChatController = (function () {
 
       VoiceState.chatAgentState = data.agent_state;
       VoiceState.chatAgentStateLabel = null; // Reset; will be set by SSE with richer label if available
+      VoiceState.chatAgentPersonaSlug = data.persona_slug || null;
       VoiceState.chatHasMore = data.has_more || false;
       VoiceState.chatAgentEnded = data.agent_ended || false;
       var focusLink = document.getElementById('chat-focus-link');
@@ -433,9 +434,10 @@ window.VoiceChatController = (function () {
       { id: 'info', label: 'Agent info', icon: I.info || '' },
       { id: 'reconcile', label: 'Reconcile', icon: I.reconcile || '' }
     ];
-    // Handoff is only available when agent has a persona
+    // Handoff and promote are only available when agent has a persona
     if (_agentHasPersona()) {
       actions.push({ id: 'handoff', label: 'Handoff', icon: I.handoff || '', className: 'handoff-action' });
+      actions.push({ id: 'promote', label: 'Create Group Channel', icon: I.promote || '' });
     }
     actions.push('divider');
     actions.push({ id: 'dismiss', label: 'Dismiss agent', icon: I.dismiss || '', className: 'kill-action' });
@@ -497,6 +499,9 @@ window.VoiceChatController = (function () {
           });
         }
         break;
+      case 'promote':
+        _promoteToGroup(agentId);
+        break;
       case 'dismiss':
         if (typeof ConfirmDialog !== 'undefined') {
           ConfirmDialog.show(
@@ -527,6 +532,72 @@ window.VoiceChatController = (function () {
           .catch(function () { showChatSystemMessage('Revival failed'); });
         break;
     }
+  }
+
+  /** Show a toast if available, otherwise fall back to a system message bubble. */
+  function _toastOrSystem(level, msg) {
+    if (window.Toast && typeof Toast[level] === 'function') {
+      Toast[level](msg);
+    } else {
+      showChatSystemMessage(msg);
+    }
+  }
+
+  /** Look up a persona's display name from a personas array by slug. */
+  function _personaNameBySlug(personas, slug) {
+    for (var i = 0; i < personas.length; i++) {
+      if (personas[i].slug === slug) return personas[i].name || slug;
+    }
+    return slug;
+  }
+
+  /** Promote a 1:1 agent chat to a group channel. */
+  function _promoteToGroup(agentId) {
+    var currentPersonaSlug = VoiceState.chatAgentPersonaSlug;
+    VoiceAPI.getActivePersonas().then(function (data) {
+      var allPersonas = Array.isArray(data) ? data : (data && data.personas) ? data.personas : [];
+      // Filter out the current agent's persona
+      var pickable = currentPersonaSlug
+        ? allPersonas.filter(function (p) { return p.slug !== currentPersonaSlug; })
+        : allPersonas;
+      if (pickable.length === 0) {
+        showChatSystemMessage('No other personas available to create a group channel.');
+        return;
+      }
+      VoiceSidebar.showPersonaPicker(null, pickable, function (selectedSlug) {
+        if (!selectedSlug) {
+          showChatSystemMessage('A persona must be selected to create a group channel.');
+          return;
+        }
+        showChatSystemMessage('Creating group channel\u2026');
+        CHUtils.apiFetch('/api/agents/' + agentId + '/promote-to-group', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ persona_slug: selectedSlug })
+        }).then(function (res) {
+          return res.json().then(function (channelData) {
+            if (res.ok) {
+              var currentPersonaName = _personaNameBySlug(allPersonas, currentPersonaSlug) || 'Agent';
+              var selectedPersonaName = _personaNameBySlug(allPersonas, selectedSlug);
+              _toastOrSystem('success', 'Group channel created with ' + currentPersonaName + ' and ' + selectedPersonaName);
+              // Refresh sidebar to show new channel
+              VoiceSidebar.refreshAgents();
+              // Switch to the new channel chat
+              if (channelData.slug) {
+                VoiceChannelChat.showChannelChatScreen(channelData.slug);
+              }
+            } else {
+              var errMsg = channelData.error || channelData.detail || 'Unknown error';
+              _toastOrSystem('error', 'Promote failed: ' + errMsg);
+            }
+          });
+        }).catch(function () {
+          _toastOrSystem('error', 'Failed to create group channel');
+        });
+      });
+    }).catch(function () {
+      showChatSystemMessage('Failed to load personas');
+    });
   }
 
   /** Open the agent chat kebab menu from the header trigger button. */

@@ -340,6 +340,14 @@ class TestAgentChannelConflict:
         channel_service.add_member(
             ch1.slug, setup_data["persona_b"].slug, setup_data["persona_a"]
         )
+        # add_member creates membership with agent_id=None (async linking).
+        # Manually set agent_id so _check_agent_channel_conflict can find it.
+        membership = ChannelMembership.query.filter_by(
+            channel_id=ch1.id, persona_id=setup_data["persona_b"].id
+        ).first()
+        membership.agent_id = setup_data["agent_b"].id
+        db.session.commit()
+
         with pytest.raises(AgentChannelConflictError) as exc_info:
             channel_service._check_agent_channel_conflict(setup_data["agent_b"])
         assert "already an active member" in str(exc_info.value)
@@ -544,7 +552,9 @@ class TestContextBriefing:
             channel_type="workshop",
         )
         briefing = channel_service._generate_context_briefing(ch)
-        assert briefing == ""
+        # Empty channels still receive the channel protocol
+        assert "Channel Protocol" in briefing
+        assert "Context briefing" not in briefing
 
 
 class TestSSEBroadcasting:
@@ -863,6 +873,13 @@ class TestAgentChannelConflictScoping:
         channel_service.add_member(
             ch1.slug, setup_data["persona_b"].slug, setup_data["persona_a"]
         )
+        # add_member creates membership with agent_id=None (async linking).
+        # Manually set agent_id so _check_agent_channel_conflict can find it.
+        membership = ChannelMembership.query.filter_by(
+            channel_id=ch1.id, persona_id=setup_data["persona_b"].id
+        ).first()
+        membership.agent_id = setup_data["agent_b"].id
+        db.session.commit()
 
         with pytest.raises(AgentChannelConflictError):
             channel_service._check_agent_channel_conflict(setup_data["agent_b"])
