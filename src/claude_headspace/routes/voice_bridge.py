@@ -160,6 +160,22 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
             "remaining_tokens": agent.context_remaining_tokens or "",
         }
 
+    # Channel membership
+    channel = None
+    try:
+        from ..models.channel_membership import ChannelMembership
+
+        membership = ChannelMembership.query.filter_by(
+            agent_id=agent.id, status="active"
+        ).first()
+        if membership and membership.channel:
+            channel = {
+                "slug": membership.channel.slug,
+                "name": membership.channel.name,
+            }
+    except Exception:
+        pass
+
     result = {
         "agent_id": agent.id,
         "name": agent.name,
@@ -180,6 +196,7 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
         "persona_name": persona_name,
         "persona_role": persona_role,
         "started_at": agent.started_at.isoformat() if agent.started_at else None,
+        "channel": channel,
     }
 
     if include_ended_fields and agent.ended_at:

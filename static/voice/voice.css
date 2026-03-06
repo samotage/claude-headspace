@@ -1011,6 +1011,28 @@ body.layout-split .channel-card.selected:hover {
 .agent-state.state-complete { background: var(--success-subtle); color: var(--success); }
 .agent-state.state-timed_out { background: var(--error-subtle); color: var(--error); }
 
+/* --- Channel badge on agent card --- */
+.agent-channel-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--accent);
+  background: rgba(88, 166, 255, 0.12);
+  border: 1px solid rgba(88, 166, 255, 0.25);
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.agent-channel-badge:hover {
+  background: rgba(88, 166, 255, 0.25);
+  border-color: rgba(88, 166, 255, 0.4);
+}
+
 /* --- Chat header state pill --- */
 .chat-state-pill {
   font-size: 11px;

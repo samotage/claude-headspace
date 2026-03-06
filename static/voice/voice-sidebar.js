@@ -282,6 +282,14 @@ window.VoiceSidebar = (function () {
           + '<span class="agent-hero-trail">' + VoiceChatRenderer.esc(heroTrail) + '</span>';
       }
 
+      var channelBadgeHtml = '';
+      if (a.channel && a.channel.slug) {
+        channelBadgeHtml = '<span class="agent-channel-badge" data-channel-slug="'
+          + VoiceChatRenderer.esc(a.channel.slug) + '" title="In channel: #'
+          + VoiceChatRenderer.esc(a.channel.name) + '">#'
+          + VoiceChatRenderer.esc(a.channel.name) + '</span>';
+      }
+
       return '<div class="agent-card ' + stateClass + selectedClass + endedClass + '" data-agent-id="' + a.agent_id + '">'
         + '<div class="agent-header">'
         + '<a class="agent-card-link" href="/voice?agent_id=' + a.agent_id + '">'
@@ -290,6 +298,7 @@ window.VoiceSidebar = (function () {
         + '</div>'
         + '</a>'
         + '<div class="agent-header-actions">'
+        + channelBadgeHtml
         + '<span class="agent-state ' + stateClass + '">' + VoiceChatRenderer.esc(stateLabel) + '</span>'
         + '<button class="agent-kebab-btn"' + kebabBtnDataAttrs + ' title="Actions">&#8942;</button>'
         + '</div>'
@@ -368,6 +377,18 @@ window.VoiceSidebar = (function () {
     for (var cl = 0; cl < cardLinks.length; cl++) {
       cardLinks[cl].addEventListener('click', function (e) {
         e.preventDefault();
+      });
+    }
+
+    // Bind channel badge clicks — navigate to channel chat
+    var channelBadges = list.querySelectorAll('.agent-channel-badge');
+    for (var cb = 0; cb < channelBadges.length; cb++) {
+      channelBadges[cb].addEventListener('click', function (e) {
+        e.stopPropagation();
+        var slug = this.getAttribute('data-channel-slug');
+        if (slug && typeof VoiceChannelChat !== 'undefined') {
+          VoiceChannelChat.showChannelChatScreen(slug);
+        }
       });
     }
 
