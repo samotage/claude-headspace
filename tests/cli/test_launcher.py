@@ -1295,14 +1295,15 @@ class TestGetBridgeDefault:
             config_path = f.name
 
         try:
-            with patch.object(Path, "cwd", return_value=Path(config_path).parent):
-                original_exists = Path.exists
+            fake_home = Path(config_path).parent
+            original_exists = Path.exists
 
-                def mock_exists(self):
-                    if str(self) == str(Path(config_path).parent / "config.yaml"):
-                        return True
-                    return original_exists(self)
+            def mock_exists(self):
+                if str(self) == str(fake_home / ".claude-headspace" / "config.yaml"):
+                    return True
+                return original_exists(self)
 
+            with patch.object(Path, "home", return_value=fake_home):
                 with patch.object(Path, "exists", mock_exists):
                     with patch(
                         "builtins.open",
@@ -1321,14 +1322,15 @@ class TestGetBridgeDefault:
             config_path = f.name
 
         try:
-            with patch.object(Path, "cwd", return_value=Path(config_path).parent):
-                original_exists = Path.exists
+            fake_home = Path(config_path).parent
+            original_exists = Path.exists
 
-                def mock_exists(self):
-                    if str(self) == str(Path(config_path).parent / "config.yaml"):
-                        return True
-                    return original_exists(self)
+            def mock_exists(self):
+                if str(self) == str(fake_home / ".claude-headspace" / "config.yaml"):
+                    return True
+                return original_exists(self)
 
+            with patch.object(Path, "home", return_value=fake_home):
                 with patch.object(Path, "exists", mock_exists):
                     with patch(
                         "builtins.open",

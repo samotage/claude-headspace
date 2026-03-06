@@ -62,8 +62,10 @@ def get_server_url() -> str:
         return env_url.rstrip("/")
 
     # Try to load from config.yaml
+    # NOTE: Do NOT check Path.cwd() — other projects may have their own
+    # config.yaml with conflicting server/port settings (e.g. Kenwood's
+    # config.yaml has port 5057, which is not Headspace).
     config_paths = [
-        Path.cwd() / "config.yaml",
         Path(__file__).parent.parent.parent.parent.parent / "config.yaml",
         Path.home() / ".claude-headspace" / "config.yaml",
     ]
@@ -100,7 +102,6 @@ def get_bridge_default() -> bool:
         when no config is found).
     """
     config_paths = [
-        Path.cwd() / "config.yaml",
         Path(__file__).parent.parent.parent.parent.parent / "config.yaml",
         Path.home() / ".claude-headspace" / "config.yaml",
     ]
