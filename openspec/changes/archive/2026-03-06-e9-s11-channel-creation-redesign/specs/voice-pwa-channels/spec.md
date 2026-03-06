@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Voice App Channel Creation Bottom Sheet — Redesigned
 

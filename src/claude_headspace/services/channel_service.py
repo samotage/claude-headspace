@@ -624,7 +624,9 @@ class ChannelService:
             )
 
         # Determine effective project_id — prefer caller-supplied, fall back to channel's
-        effective_project_id = project_id if project_id is not None else channel.project_id
+        effective_project_id = (
+            project_id if project_id is not None else channel.project_id
+        )
 
         # Spin up fresh agent (S11: always fresh, no reuse)
         self._spin_up_agent_for_persona(target_persona, project_id=effective_project_id)
@@ -1436,11 +1438,9 @@ class ChannelService:
             raise ValueError("persona_slugs must be a non-empty list")
 
         # Validate project
-        project = Project.query.get(project_id)
+        project = db.session.get(Project, project_id)
         if not project:
-            raise ProjectNotFoundError(
-                f"Error: Project #{project_id} not found."
-            )
+            raise ProjectNotFoundError(f"Error: Project #{project_id} not found.")
 
         # Resolve all personas first — fail fast before any DB writes
         target_personas: list[Persona] = []
@@ -1455,18 +1455,14 @@ class ChannelService:
         # Auto-generate name from persona names
         channel_name = " + ".join(p.name for p in target_personas)
 
-        # Create channel (pending status is the default in create_channel)
+        # Create channel (pending status is the default in create_channel;
+        # no member_agent_ids/member_slugs are passed, so it stays pending).
         channel = self.create_channel(
             creator_persona=creator_persona,
             name=channel_name,
             channel_type=channel_type,
             project_id=project_id,
         )
-        # After create_channel, status may have been set to active if members
-        # were added. Force it back to pending since agents aren't linked yet.
-        if channel.status != "pending":
-            channel.status = "pending"
-            db.session.commit()
 
         # Create memberships (agent_id=None) and kick off spin-up for each persona
         for persona in target_personas:
@@ -1554,7 +1550,7 @@ class ChannelService:
         Returns:
             True if the channel was transitioned to active, False otherwise.
         """
-        channel = Channel.query.get(channel_id)
+        channel = db.session.get(Channel, channel_id)
         if not channel:
             return False
         if channel.status != "pending":
@@ -1568,16 +1564,15 @@ class ChannelService:
         total = len(non_chair_memberships)
         connected = sum(1 for m in non_chair_memberships if m.agent_id is not None)
 
-        # Determine the persona that just connected for the SSE payload
-        # (the most recently linked non-chair membership)
+        # Determine the persona that just connected for the SSE payload.
+        # Derive from the already-loaded list to avoid an extra DB query.
+        connected_memberships = [
+            m for m in non_chair_memberships if m.agent_id is not None
+        ]
         just_connected_membership = (
-            ChannelMembership.query.filter(
-                ChannelMembership.channel_id == channel_id,
-                ChannelMembership.is_chair.is_(False),
-                ChannelMembership.agent_id.isnot(None),
-            )
-            .order_by(ChannelMembership.joined_at.desc())
-            .first()
+            max(connected_memberships, key=lambda m: m.joined_at or 0)
+            if connected_memberships
+            else None
         )
 
         persona_name = ""

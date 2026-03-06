@@ -15,7 +15,6 @@ import pytest
 
 from claude_headspace.database import db
 from claude_headspace.models.agent import Agent
-from claude_headspace.models.channel import Channel, ChannelType
 from claude_headspace.models.channel_membership import ChannelMembership
 from claude_headspace.models.message import Message, MessageType
 from claude_headspace.models.persona import Persona
@@ -54,7 +53,6 @@ def setup_data(app, db_session):
     db.session.flush()
 
     pt_internal = db.session.get(PersonaType, 1)
-    pt_external = db.session.get(PersonaType, 2)
 
     # Operator persona (can_create_channel must be True — use internal type)
     operator = Persona(

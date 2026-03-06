@@ -20,7 +20,6 @@ from claude_headspace.services.channel_service import (
 )
 from claude_headspace.services.session_token import SessionTokenService
 
-
 # ──────────────────────────────────────────────────────────────
 # Fixtures
 # ──────────────────────────────────────────────────────────────

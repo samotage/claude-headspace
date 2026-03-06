@@ -74,7 +74,7 @@ The ChannelService SHALL provide a `check_channel_ready()` method that transitio
 
 ---
 
-## MODIFIED Requirements
+## ADDED Requirements (S11 Extensions)
 
 ### Requirement: _spin_up_agent_for_persona() — Always Fresh, Project-Aware
 

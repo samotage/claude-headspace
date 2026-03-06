@@ -19,6 +19,7 @@ from functools import wraps
 from flask import Blueprint, current_app, jsonify, request
 
 from ..database import db
+from ..models.channel import ChannelType
 from ..services.channel_service import (
     AgentChannelConflictError,
     AgentNotFoundError,
@@ -153,6 +154,24 @@ def _resolve_caller():
 def _get_channel_service():
     """Get the ChannelService from app extensions, or None."""
     return current_app.extensions.get("channel_service")
+
+
+def _validate_channel_type(channel_type: str):
+    """Validate ``channel_type`` against ChannelType enum.
+
+    Returns an error response tuple on failure, or None if valid.
+    """
+    try:
+        ChannelType(channel_type)
+    except ValueError:
+        valid_types = [ct.value for ct in ChannelType]
+        return _error_response(
+            400,
+            "invalid_field",
+            f"Invalid channel_type '{channel_type}'. "
+            f"Must be one of: {', '.join(valid_types)}",
+        )
+    return None
 
 
 # ──────────────────────────────────────────────────────────────
@@ -318,18 +337,9 @@ def create_channel(*, persona, agent, service):
             )
 
         # Validate channel_type
-        from ..models.channel import ChannelType
-
-        try:
-            ChannelType(channel_type)
-        except ValueError:
-            valid_types = [ct.value for ct in ChannelType]
-            return _error_response(
-                400,
-                "invalid_field",
-                f"Invalid channel_type '{channel_type}'. "
-                f"Must be one of: {', '.join(valid_types)}",
-            )
+        err = _validate_channel_type(channel_type)
+        if err:
+            return err
 
         try:
             channel = service.create_channel_from_personas(
@@ -363,17 +373,9 @@ def create_channel(*, persona, agent, service):
         )
 
     # Validate channel_type
-    from ..models.channel import ChannelType
-
-    try:
-        ChannelType(channel_type)
-    except ValueError:
-        valid_types = [ct.value for ct in ChannelType]
-        return _error_response(
-            400,
-            "invalid_field",
-            f"Invalid channel_type '{channel_type}'. Must be one of: {', '.join(valid_types)}",
-        )
+    err = _validate_channel_type(channel_type)
+    if err:
+        return err
 
     # Validate member_agents if provided
     member_agents = data.get("member_agents")

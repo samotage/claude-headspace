@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: POST /api/channels — Persona-Based Creation Path
 
