@@ -1,7 +1,7 @@
 ---
 validation:
-  status: draft
-  validated_at: null
+  status: valid
+  validated_at: '2026-03-06T11:43:18+11:00'
 ---
 
 ## Product Requirements Document (PRD) — Channel Creation Redesign + Member Pills
@@ -118,62 +118,65 @@ The same experience is available when Sam creates a channel from the dashboard �
 **FR1: Channel creation — project picker**
 Channel creation opens a picker. Step 1 is a project picker (single-select, required). In the voice app this is a bottom sheet; in the dashboard this is a popup/modal.
 
-**FR2: Channel creation — persona multi-checkbox**
-Step 2 shows active personas for the selected project as a multi-checkbox list. At least one must be selected. CTA: "Create Channel."
+**FR2: Channel creation — channel type**
+Step 2 is a channel type selector (single-select, required). Available types: workshop, delegation, review, standup, broadcast. The type field is retained from V0 — its full significance will be defined in the organisational workshop context.
 
-**FR3: Channel name**
+**FR3: Channel creation — persona multi-checkbox**
+Step 3 shows active personas for the selected project as a multi-checkbox list. At least one must be selected. CTA: "Create Channel."
+
+**FR4: Channel name**
 Channel name is auto-generated from the selected persona names (e.g., "Robbo + Con + Wado"). The existing channel name text input is removed from both creation forms.
 
-**FR4: Agent spin-up at creation**
+**FR5: Agent spin-up at creation**
 On submit, the system creates the Channel record in `pending` status, then spins up one new agent per selected persona. No existing running agents are attached. Even if a persona has a running agent, a fresh instance is created.
 
-**FR5: Pending state and chat input lock**
+**FR6: Pending state and chat input lock**
 While the channel is `pending`, the chat input is disabled in both surfaces. The channel is visible but messaging is blocked.
 
-**FR6: Initiation system message**
+**FR7: Initiation system message**
 A system message is injected immediately on creation: "Channel initiating..." (exact wording is implementer decision).
 
-**FR7: Progressive pill appearance**
+**FR8: Progressive pill appearance**
 As each agent connects, their member pill appears in the channel chat header. Pills appear one by one — not all at once.
 
-**FR8: Live member count**
+**FR9: Live member count**
 The header displays live readiness state: "1 of 3 online" updating progressively.
 
-**FR9: Go-signal system message**
+**FR10: Go-signal system message**
 When all agents are connected and the channel transitions to `active`, a system message is injected (tone: "green light, let's go"). Chat input becomes enabled.
 
-**FR10: Spin-up failure handling**
+**FR11: Spin-up failure handling**
 If any agent fails to spin up, a system message with failure detail is injected. The channel remains `pending`. Failure message content to be determined when failures are encountered in practice.
 
 ### Post-Creation Member Addition (Both Surfaces)
 
-**FR11: Add member — voice app stub wired**
+**FR12: Add member — voice app stub wired**
 The `add-member` case in `voice-channel-chat.js` (currently stub) is wired to open the creation picker in single-select mode. Stub message removed.
 
-**FR12: Add member — dashboard**
+**FR13: Add member — dashboard**
 The dashboard channel chat panel's add-member action opens the same picker in single-select mode with project picker present.
 
-**FR13: Add member picker — single-select mode**
+**FR14: Add member picker — single-select mode**
 Project picker present, may select a different project from the channel's original. CTA: "Add to Channel." Persona single-select.
 
-**FR14: New agent spin-up for added member**
+**FR15: New agent spin-up for added member**
 A new agent is spun up for the selected persona under the specified project. Cross-project membership tracked at membership level; channel `project_id` FK unchanged.
 
-**FR15: New member pill on connection**
+**FR16: New member pill on connection**
 New member's pill appears in the header when their agent connects. Channel remains active during addition.
 
 ### Member Pills (Both Surfaces)
 
-**FR16: Per-member pills replace plain count**
+**FR17: Per-member pills replace plain count**
 Channel chat header in both surfaces displays one pill per member. Each pill shows the persona name.
 
-**FR17: Pill click — focus API**
+**FR18: Pill click — focus API**
 Clicking a pill calls `/api/focus/<agent_id>`. Pending pills (agent not yet connected) are not clickable.
 
-**FR18: Pending pill state**
+**FR19: Pending pill state**
 Pills with null `agent_id` are rendered in a visually distinct pending state (e.g., muted/greyed).
 
-**FR19: Real-time pill updates**
+**FR20: Real-time pill updates**
 Pills update in real-time via SSE when members are added or agents connect. No page reload.
 
 ---
@@ -365,7 +368,7 @@ S11 supersedes the following:
 | Decision | Options | Status |
 |----------|---------|--------|
 | Channel name auto-generation format | e.g., "Robbo + Con + Wado" vs. role-based | Open -- implementer decision |
-| Channel type field | V0 had type select (workshop/delegation/review/broadcast); S11 removes name field but type status unclear | Open -- confirm whether type is kept, removed, or defaulted |
+| Channel type field | V0 had type select (workshop/delegation/review/broadcast) | Resolved -- keep the type field in the creation form. Full utilisation deferred to organisational workshop context. |
 | Exact wording of initiation system message | "Channel initiating..." or similar | Open -- implementer decision within this tone |
 | Exact wording of go-signal system message | "Green light -- let's go." or similar | Open -- implementer decision within the tone confirmed by Sam |
 | Spin-up failure message content | Dependent on failure type | Open -- to be determined when failures are encountered |
@@ -381,3 +384,4 @@ S11 supersedes the following:
 | 1.1     | 2026-03-06 | Robbo  | Added Prior Sprint Modifications table; cross-reference to S10 spin-up pattern |
 | 1.2     | 2026-03-06 | Mel    | Context correction: PRD initially scoped to voice app only. Corrected NFR2. Added channel type as open decision. |
 | 1.3     | 2026-03-06 | Mel    | Scope expanded: functionality applies to both voice app and dashboard. Backend changes shared; frontend implemented independently in each surface. Added dashboard files affected. Restored S9 prior sprint modifications. |
+| 1.4     | 2026-03-06 | Robbo  | Sam confirmed: channel type field retained in both creation forms. Added FR2 (channel type selector); renumbered FR3-FR20 accordingly. Resolved channel type open decision. |
