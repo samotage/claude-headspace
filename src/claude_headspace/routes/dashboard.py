@@ -763,6 +763,20 @@ def dashboard():
                 handoff_eligible = ctx_pct >= handoff_threshold
             agent_dict["handoff_eligible"] = handoff_eligible
 
+            # Channel membership indicator
+            agent_dict["channel"] = None
+            try:
+                _ch_membership = ChannelMembership.query.filter_by(
+                    agent_id=agent.id, status="active"
+                ).first()
+                if _ch_membership and _ch_membership.channel:
+                    agent_dict["channel"] = {
+                        "slug": _ch_membership.channel.slug,
+                        "name": _ch_membership.channel.name,
+                    }
+            except Exception:
+                pass  # Non-fatal — channel indicator is advisory
+
             agents_data.append(agent_dict)
             agent_data_map[agent.id] = agent_dict
             all_agents_data.append(agent_dict)

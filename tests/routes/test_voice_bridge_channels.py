@@ -99,8 +99,12 @@ class TestChannelSendRoute:
 
         # Patch at the route module location (where the names are used)
         with (
-            patch("src.claude_headspace.services.voice_channel_handlers.Channel") as MockChannel,
-            patch("src.claude_headspace.services.voice_channel_handlers.Persona") as MockPersona,
+            patch(
+                "src.claude_headspace.services.voice_channel_handlers.Channel"
+            ) as MockChannel,
+            patch(
+                "src.claude_headspace.services.voice_channel_handlers.Persona"
+            ) as MockPersona,
         ):
             MockChannel.query.filter.return_value.all.return_value = [mock_channel]
             MockPersona.get_operator.return_value = mock_persona
@@ -135,8 +139,12 @@ class TestChannelHistoryRoute:
         mock_persona.name = "Operator"
 
         with (
-            patch("src.claude_headspace.services.voice_channel_handlers.Channel") as MockChannel,
-            patch("src.claude_headspace.services.voice_channel_handlers.Persona") as MockPersona,
+            patch(
+                "src.claude_headspace.services.voice_channel_handlers.Channel"
+            ) as MockChannel,
+            patch(
+                "src.claude_headspace.services.voice_channel_handlers.Persona"
+            ) as MockPersona,
         ):
             MockChannel.query.filter.return_value.all.return_value = [mock_channel]
             MockPersona.get_operator.return_value = mock_persona

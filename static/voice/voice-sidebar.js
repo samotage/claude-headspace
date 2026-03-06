@@ -263,7 +263,8 @@ window.VoiceSidebar = (function () {
         footerParts.push(a.last_activity_ago);
       }
 
-      var selectedClass = (VoiceState.layoutMode === 'split' && a.agent_id === VoiceState.targetAgentId) ? ' selected' : '';
+      var channelActive = VoiceState.currentScreen === 'channel-chat' && VoiceState.currentChannelSlug;
+      var selectedClass = (!channelActive && VoiceState.layoutMode === 'split' && a.agent_id === VoiceState.targetAgentId) ? ' selected' : '';
       var endedClass = isEnded ? ' ended' : '';
 
       // Kebab button only — menu rendered via portal
@@ -1005,6 +1006,9 @@ window.VoiceSidebar = (function () {
         openChannelPicker();
       });
     }
+
+    // Restore channel selection highlight after DOM rebuild
+    highlightSelectedChannel();
   }
 
   function onChannelCardClick(slug) {

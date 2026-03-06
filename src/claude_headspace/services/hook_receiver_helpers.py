@@ -11,9 +11,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 
-from ..database import db  # noqa: F401 — re-exported for handler modules + test patching
+from ..database import (
+    db,  # noqa: F401 — re-exported for handler modules + test patching
+)
 from ..models.agent import Agent
-from ..models.command import CommandState
 from ..models.turn import Turn, TurnActor, TurnIntent
 from .card_state import broadcast_card_refresh as _card_state_broadcast
 from .command_lifecycle import (
@@ -22,7 +23,9 @@ from .command_lifecycle import (
 )
 from .guardrail_sanitiser import contains_error_patterns, sanitise_error_output
 from .hook_agent_state import get_agent_hook_state
-from .intent_detector import detect_agent_intent  # noqa: F401 — re-exported for test patching
+from .intent_detector import (
+    detect_agent_intent,  # noqa: F401 — re-exported for test patching
+)
 from .team_content_detector import is_team_internal_content
 
 logger = logging.getLogger(__name__)

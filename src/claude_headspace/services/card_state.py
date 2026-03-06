@@ -713,6 +713,22 @@ def build_card_state(agent: Agent) -> dict:
             "handoff_threshold": handoff_threshold,
         }
 
+    # Channel membership indicator
+    card["channel"] = None
+    try:
+        from ..models.channel_membership import ChannelMembership
+
+        membership = ChannelMembership.query.filter_by(
+            agent_id=agent.id, status="active"
+        ).first()
+        if membership and membership.channel:
+            card["channel"] = {
+                "slug": membership.channel.slug,
+                "name": membership.channel.name,
+            }
+    except Exception:
+        pass  # Non-fatal — channel indicator is advisory
+
     # Predecessor link for revival/handoff successor agents
     card["previous_agent_id"] = agent.previous_agent_id
 

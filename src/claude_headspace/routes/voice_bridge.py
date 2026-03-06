@@ -408,9 +408,7 @@ def _detect_picker_state(agent, current_command):
 
     if state["has_picker"]:
         route_desc = (
-            "plan approval (direct select)"
-            if state["is_plan_approval"]
-            else "'Other'"
+            "plan approval (direct select)" if state["is_plan_approval"] else "'Other'"
         )
         logger.info(
             f"Voice command to agent {agent.id} targeting a picker question "
@@ -420,7 +418,9 @@ def _detect_picker_state(agent, current_command):
     return state
 
 
-def _dispatch_tmux_send(agent, send_text, picker_state, bridge_config, is_answering, is_processing):
+def _dispatch_tmux_send(
+    agent, send_text, picker_state, bridge_config, is_answering, is_processing
+):
     """Send text to agent via tmux, handling picker/plan-approval/normal paths.
 
     Returns the tmux send result.
@@ -579,9 +579,7 @@ def _handle_voice_command_idle_or_processing(
 
     except Exception as e:
         # Lifecycle processing failed but tmux send already succeeded.
-        logger.warning(
-            f"Voice command turn creation failed (tmux send succeeded): {e}"
-        )
+        logger.warning(f"Voice command turn creation failed (tmux send succeeded): {e}")
         db.session.rollback()
         get_agent_hook_state().clear_respond_inflight(agent.id)
         agent.last_seen_at = datetime.now(timezone.utc)
@@ -726,12 +724,16 @@ def voice_command():
     is_processing = current_state in (CommandState.PROCESSING, CommandState.COMMANDED)
 
     # Detect picker state
-    picker_state = _detect_picker_state(agent, current_command) if is_answering else {
-        "has_picker": False,
-        "is_plan_approval": False,
-        "picker_option_count": 0,
-        "picker_option_labels": [],
-    }
+    picker_state = (
+        _detect_picker_state(agent, current_command)
+        if is_answering
+        else {
+            "has_picker": False,
+            "is_plan_approval": False,
+            "picker_option_count": 0,
+            "picker_option_labels": [],
+        }
+    )
 
     # Check tmux pane
     if not agent.tmux_pane_id:

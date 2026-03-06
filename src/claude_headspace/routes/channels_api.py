@@ -292,9 +292,7 @@ def _membership_to_dict(membership) -> dict:
         except Exception:
             pass
         # Include tmux availability for click-to-focus
-        d["has_tmux"] = bool(
-            getattr(membership.agent, "tmux_pane_id", None)
-        )
+        d["has_tmux"] = bool(getattr(membership.agent, "tmux_pane_id", None))
 
     return d
 

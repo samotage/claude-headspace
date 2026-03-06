@@ -340,36 +340,18 @@ class ChannelDeliveryService:
         """
         agent = membership.agent
 
-        # No agent linked or agent ended — try to self-heal by finding a
-        # live agent for the same persona (handles new sessions replacing old).
+        # No agent linked or agent ended — delivery is deferred.
+        # The message persists in channel history. No automatic agent
+        # substitution: a new agent for the same persona is a different
+        # session with different context. Silent reassignment causes chaos.
         if agent is None or agent.ended_at is not None:
-            live_agent = (
-                Agent.query.filter_by(
-                    persona_id=membership.persona_id,
-                )
-                .filter(Agent.ended_at.is_(None))
-                .order_by(Agent.id.desc())
-                .first()
+            reason = "no linked agent" if agent is None else f"agent {agent.id} ended"
+            logger.warning(
+                f"Channel delivery deferred for membership {membership.id} "
+                f"(persona_id={membership.persona_id}): {reason}. "
+                f"Message persists in channel history."
             )
-            if live_agent and live_agent.tmux_pane_id:
-                try:
-                    membership.agent_id = live_agent.id
-                    db.session.commit()
-                    agent = live_agent
-                    logger.info(
-                        f"Self-healed channel membership {membership.id}: "
-                        f"agent_id updated to {agent.id} (inbound delivery)"
-                    )
-                except Exception:
-                    db.session.rollback()
-                    agent = None
-
-            if agent is None or agent.ended_at is not None:
-                logger.debug(
-                    f"Deferred delivery for persona {membership.persona_id} "
-                    f"(no active agent)"
-                )
-                return
+            return
 
         # Agent exists — check if it's an internal agent with tmux
         if not agent.tmux_pane_id:

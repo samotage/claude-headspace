@@ -485,7 +485,9 @@ class TestProcessUserPromptSubmit:
 
 class TestProcessStop:
     @patch("claude_headspace.services.hook_receiver_helpers.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch(
+        "claude_headspace.services.hook_receiver_helpers._extract_transcript_content"
+    )
     @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_successful_stop(
@@ -523,7 +525,9 @@ class TestProcessStop:
         mock_lifecycle.complete_command.assert_called_once()
 
     @patch("claude_headspace.services.hook_receiver_helpers.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch(
+        "claude_headspace.services.hook_receiver_helpers._extract_transcript_content"
+    )
     @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_stop_with_question_detected(
@@ -580,7 +584,9 @@ class TestProcessStop:
         assert result.new_state is None
 
     @patch("claude_headspace.services.hook_receiver_helpers.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch(
+        "claude_headspace.services.hook_receiver_helpers._extract_transcript_content"
+    )
     @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_end_of_command_detected(
@@ -1360,7 +1366,9 @@ class TestNotificationTurnDedup:
 class TestStopTurnBroadcast:
     @patch("claude_headspace.services.hook_receiver_helpers._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver_helpers.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch(
+        "claude_headspace.services.hook_receiver_helpers._extract_transcript_content"
+    )
     @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_broadcasts_turn_when_awaiting_input(
@@ -1417,7 +1425,9 @@ class TestStopTurnBroadcast:
 
     @patch("claude_headspace.services.hook_receiver_helpers._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver_helpers.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch(
+        "claude_headspace.services.hook_receiver_helpers._extract_transcript_content"
+    )
     @patch("claude_headspace.services.hook_receiver_helpers._get_lifecycle_manager")
     @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_no_turn_broadcast_when_complete(
@@ -1859,7 +1869,9 @@ class TestSynthesizePermissionOptions:
 class TestPermissionPaneCapture:
     """Integration tests for permission pane capture in the hook flow."""
 
-    @patch("claude_headspace.services.hook_handler_awaiting_input._synthesize_permission_options")
+    @patch(
+        "claude_headspace.services.hook_handler_awaiting_input._synthesize_permission_options"
+    )
     @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_permission_request_uses_synthesized_options(
         self, mock_db, mock_synthesize, mock_agent, fresh_state
@@ -1898,7 +1910,9 @@ class TestPermissionPaneCapture:
         added_turn = mock_db.session.add.call_args_list[0][0][0]
         assert added_turn.tool_input == synthesized
 
-    @patch("claude_headspace.services.hook_handler_awaiting_input._synthesize_permission_options")
+    @patch(
+        "claude_headspace.services.hook_handler_awaiting_input._synthesize_permission_options"
+    )
     @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_permission_request_falls_back_when_synthesis_returns_none(
         self, mock_db, mock_synthesize, mock_agent, fresh_state
@@ -1926,7 +1940,9 @@ class TestPermissionPaneCapture:
         added_turn = mock_db.session.add.call_args_list[0][0][0]
         assert added_turn.tool_input is None
 
-    @patch("claude_headspace.services.hook_handler_awaiting_input._synthesize_permission_options")
+    @patch(
+        "claude_headspace.services.hook_handler_awaiting_input._synthesize_permission_options"
+    )
     @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_pre_tool_use_does_not_call_synthesize(
         self, mock_db, mock_synthesize, mock_agent, fresh_state
@@ -2167,12 +2183,16 @@ class TestStopHookProgressDedup:
     """Verify process_stop upgrades PROGRESS turns instead of duplicating."""
 
     @patch("claude_headspace.services.hook_receiver_helpers.detect_agent_intent")
-    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch(
+        "claude_headspace.services.hook_receiver_helpers._extract_transcript_content"
+    )
     @patch("claude_headspace.services.hook_receiver_helpers.broadcast_card_refresh")
     @patch("claude_headspace.services.hook_receiver_helpers._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver_helpers._trigger_priority_scoring")
     @patch("claude_headspace.services.hook_receiver_helpers._broadcast_state_change")
-    @patch("claude_headspace.services.hook_receiver_helpers._send_completion_notification")
+    @patch(
+        "claude_headspace.services.hook_receiver_helpers._send_completion_notification"
+    )
     @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_all_captured_upgrades_progress(
         self,
@@ -2293,12 +2313,16 @@ class TestStopHookProgressDedup:
         # The last progress turn's intent should have been upgraded to COMPLETION
         assert progress_turn3.intent == TurnIntent.COMPLETION
 
-    @patch("claude_headspace.services.hook_receiver_helpers._extract_transcript_content")
+    @patch(
+        "claude_headspace.services.hook_receiver_helpers._extract_transcript_content"
+    )
     @patch("claude_headspace.services.hook_receiver_helpers.broadcast_card_refresh")
     @patch("claude_headspace.services.hook_receiver_helpers._broadcast_turn_created")
     @patch("claude_headspace.services.hook_receiver_helpers._trigger_priority_scoring")
     @patch("claude_headspace.services.hook_receiver_helpers._broadcast_state_change")
-    @patch("claude_headspace.services.hook_receiver_helpers._send_completion_notification")
+    @patch(
+        "claude_headspace.services.hook_receiver_helpers._send_completion_notification"
+    )
     @patch("claude_headspace.services.hook_receiver_helpers.db")
     def test_new_text_creates_completion(
         self,

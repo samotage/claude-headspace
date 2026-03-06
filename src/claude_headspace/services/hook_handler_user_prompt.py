@@ -62,7 +62,9 @@ def process_user_prompt_submit(
                     _transcript_positions.pop(agent.id, None)
             agent.last_seen_at = datetime.now(timezone.utc)
             _helpers.db.session.commit()
-            _helpers.broadcast_card_refresh(agent, "user_prompt_submit_respond_inflight")
+            _helpers.broadcast_card_refresh(
+                agent, "user_prompt_submit_respond_inflight"
+            )
             logger.info(
                 f"hook_event: type=user_prompt_submit, agent_id={agent.id}, "
                 f"session_id={claude_session_id}, skipped=respond_inflight"

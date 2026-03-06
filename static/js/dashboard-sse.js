@@ -1267,6 +1267,33 @@
             handoffBtn.remove();
         }
 
+        // Channel badge: show/hide based on channel membership
+        var channelBadge = card.querySelector('.channel-badge');
+        if (data.channel && data.channel.slug) {
+            if (!channelBadge) {
+                var leftGroup = scoreBadge ? scoreBadge.parentElement : null;
+                if (leftGroup) {
+                    var badge = document.createElement('a');
+                    badge.className = 'channel-badge';
+                    badge.href = '/voice?channel=' + data.channel.slug;
+                    badge.title = 'In channel: #' + data.channel.name;
+                    badge.innerHTML = '<span class="channel-badge-hash">#</span>' + window.CHUtils.escapeHtml(data.channel.name);
+                    // Insert after priority score
+                    if (scoreBadge.nextSibling) {
+                        leftGroup.insertBefore(badge, scoreBadge.nextSibling);
+                    } else {
+                        leftGroup.appendChild(badge);
+                    }
+                }
+            } else {
+                channelBadge.href = '/voice?channel=' + data.channel.slug;
+                channelBadge.title = 'In channel: #' + data.channel.name;
+                channelBadge.innerHTML = '<span class="channel-badge-hash">#</span>' + window.CHUtils.escapeHtml(data.channel.name);
+            }
+        } else if (channelBadge) {
+            channelBadge.remove();
+        }
+
         // Update tmux_session data attribute on the kebab trigger button
         // so the portal menu can build the correct action list.
         var kebabTrigger = card.querySelector('.card-kebab-btn[data-agent-id="' + agentId + '"]');

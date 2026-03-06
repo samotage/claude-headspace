@@ -17,28 +17,23 @@ Submodules:
 """
 
 # --- Types & constants ---
-from .hook_receiver_types import (  # noqa: F401
-    INFERRED_COMMAND_COOLDOWN_SECONDS,
-    PRE_TOOL_USE_INTERACTIVE,
-    USER_INTERACTIVE_TOOLS,
-    HookEventResult,
-    HookEventType,
-    HookMode,
-    HookReceiverState,
-    configure_receiver,
-    get_receiver_state,
-    reset_receiver_state,
+# --- Aliased extractors (re-exported for backwards compatibility) ---
+from .hook_extractors import (  # noqa: F401
+    extract_question_text as _extract_question_text,
 )
 
-# --- Proxies (backwards-compatible per-agent state) ---
-from .hook_receiver_proxies import (  # noqa: F401
-    _awaiting_tool_for_agent,
-    _deferred_stop_pending,
-    _file_metadata_pending_for_agent,
-    _progress_texts_for_agent,
-    _respond_pending_for_agent,
-    _transcript_positions,
+# --- Hook processors ---
+from .hook_handler_awaiting_input import (  # noqa: F401
+    _handle_awaiting_input,
+    process_notification,
+    process_permission_request,
+    process_pre_tool_use,
 )
+from .hook_handler_post_tool_use import process_post_tool_use  # noqa: F401
+from .hook_handler_session_end import process_session_end  # noqa: F401
+from .hook_handler_session_start import process_session_start  # noqa: F401
+from .hook_handler_stop import process_stop  # noqa: F401
+from .hook_handler_user_prompt import process_user_prompt_submit  # noqa: F401
 
 # --- Helpers (used by handlers and by hook_deferred_stop) ---
 from .hook_receiver_helpers import (  # noqa: F401
@@ -58,22 +53,24 @@ from .hook_receiver_helpers import (  # noqa: F401
     detect_agent_intent,
 )
 
-# --- Aliased extractors (re-exported for backwards compatibility) ---
-from .hook_extractors import (  # noqa: F401
-    extract_question_text as _extract_question_text,
-    extract_structured_options as _extract_structured_options,
-    synthesize_permission_options as _synthesize_permission_options,
+# --- Proxies (backwards-compatible per-agent state) ---
+from .hook_receiver_proxies import (  # noqa: F401
+    _awaiting_tool_for_agent,
+    _deferred_stop_pending,
+    _file_metadata_pending_for_agent,
+    _progress_texts_for_agent,
+    _respond_pending_for_agent,
+    _transcript_positions,
 )
-
-# --- Hook processors ---
-from .hook_handler_awaiting_input import (  # noqa: F401
-    _handle_awaiting_input,
-    process_notification,
-    process_permission_request,
-    process_pre_tool_use,
+from .hook_receiver_types import (  # noqa: F401
+    INFERRED_COMMAND_COOLDOWN_SECONDS,
+    PRE_TOOL_USE_INTERACTIVE,
+    USER_INTERACTIVE_TOOLS,
+    HookEventResult,
+    HookEventType,
+    HookMode,
+    HookReceiverState,
+    configure_receiver,
+    get_receiver_state,
+    reset_receiver_state,
 )
-from .hook_handler_post_tool_use import process_post_tool_use  # noqa: F401
-from .hook_handler_session_end import process_session_end  # noqa: F401
-from .hook_handler_session_start import process_session_start  # noqa: F401
-from .hook_handler_stop import process_stop  # noqa: F401
-from .hook_handler_user_prompt import process_user_prompt_submit  # noqa: F401

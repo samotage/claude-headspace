@@ -2345,6 +2345,35 @@ body::after {
   color: rgb(80, 220, 120);
 }
 
+/* Channel membership badge — links to channel page */
+
+.channel-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 3px;
+  background: rgba(99, 140, 210, 0.15);
+  color: rgb(130, 170, 230);
+  border: 1px solid rgba(99, 140, 210, 0.25);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.channel-badge:hover {
+  background: rgba(99, 140, 210, 0.3);
+  border-color: rgba(99, 140, 210, 0.45);
+  color: rgb(160, 195, 245);
+}
+
+.channel-badge-hash {
+  opacity: 0.5;
+  margin-right: 1px;
+}
+
 .line-content {
   flex: 1;
   min-width: 0;

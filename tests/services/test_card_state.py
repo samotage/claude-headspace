@@ -82,6 +82,7 @@ class TestBuildCardState:
             "project_id",
             "has_plan",
             "tmux_session",
+            "channel",
             "context",
             "previous_agent_id",
         }
