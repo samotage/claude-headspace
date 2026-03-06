@@ -266,6 +266,7 @@ window.VoiceSidebar = (function () {
       var channelActive = VoiceState.currentScreen === 'channel-chat' && VoiceState.currentChannelSlug;
       var selectedClass = (!channelActive && VoiceState.layoutMode === 'split' && a.agent_id === VoiceState.targetAgentId) ? ' selected' : '';
       var endedClass = isEnded ? ' ended' : '';
+      var unreadClass = (!isEnded && (a.has_unread || VoiceState.unreadAgentIds[a.agent_id])) ? ' agent-card-unread' : '';
 
       // Kebab button only — menu rendered via portal
       var kebabBtnDataAttrs = ' data-agent-id="' + a.agent_id + '"'
@@ -290,7 +291,7 @@ window.VoiceSidebar = (function () {
           + VoiceChatRenderer.esc(a.channel.name) + '</span>';
       }
 
-      return '<div class="agent-card ' + stateClass + selectedClass + endedClass + '" data-agent-id="' + a.agent_id + '">'
+      return '<div class="agent-card ' + stateClass + selectedClass + endedClass + unreadClass + '" data-agent-id="' + a.agent_id + '">'
         + '<div class="agent-header">'
         + '<a class="agent-card-link" href="/voice?agent_id=' + a.agent_id + '">'
         + '<div class="agent-hero-id">'
@@ -467,6 +468,9 @@ window.VoiceSidebar = (function () {
 
   function selectAgent(id) {
     VoiceState.navStack = [];
+    // Clear unread state (local + server)
+    delete VoiceState.unreadAgentIds[id];
+    fetch('/api/voice/agents/' + id + '/mark-read', { method: 'POST' }).catch(function () {});
     if (_onAgentSelected) {
       _onAgentSelected(id);
     }
@@ -893,7 +897,16 @@ window.VoiceSidebar = (function () {
 
     VoiceAPI.getSessions(VoiceState.settings.verbosity, VoiceState.settings.showEndedAgents).then(function (data) {
       VoiceState.endedAgents = data.ended_agents || [];
-      renderAgentList(data.agents || [], VoiceState.endedAgents);
+      // Sync unread state from API (DB-backed)
+      var apiAgents = data.agents || [];
+      for (var ui = 0; ui < apiAgents.length; ui++) {
+        if (apiAgents[ui].has_unread) {
+          VoiceState.unreadAgentIds[apiAgents[ui].agent_id] = true;
+        } else {
+          delete VoiceState.unreadAgentIds[apiAgents[ui].agent_id];
+        }
+      }
+      renderAgentList(apiAgents, VoiceState.endedAgents);
       // Apply server auto_target setting if user hasn't overridden locally
       if (data.settings && data.settings.auto_target !== undefined) {
         var stored = null;

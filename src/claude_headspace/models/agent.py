@@ -101,6 +101,11 @@ class Agent(db.Model):
         DateTime(timezone=True), nullable=True, default=None
     )
 
+    # Voice unread indicator
+    voice_unread_since: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
     # Persona / Position / Continuity fields
     persona_id: Mapped[int | None] = mapped_column(
         ForeignKey("personas.id", ondelete="SET NULL"), nullable=True

@@ -497,6 +497,10 @@ class CommandLifecycleManager:
                 self._session.add(turn)
                 self._session.flush()
 
+        # Set voice unread indicator for COMPLETION turns
+        if command.agent and command.agent.voice_unread_since is None:
+            command.agent.voice_unread_since = datetime.now(timezone.utc)
+
         logger.info(
             f"Command id={command.id} completed at {command.completed_at.isoformat()}"
         )

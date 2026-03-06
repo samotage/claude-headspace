@@ -20,6 +20,24 @@
 window.VoiceChatController = (function () {
   'use strict';
 
+  // --- Mark-read debounce ---
+  var _markReadTimer = null;
+
+  function _debouncedMarkRead() {
+    if (_markReadTimer) return;
+    _markReadTimer = setTimeout(function () {
+      _markReadTimer = null;
+      if (!VoiceState.targetAgentId) return;
+      if (!isUserNearBottom()) return;
+      var aid = VoiceState.targetAgentId;
+      if (VoiceState.unreadAgentIds[aid]) {
+        delete VoiceState.unreadAgentIds[aid];
+        fetch('/api/voice/agents/' + aid + '/mark-read', { method: 'POST' }).catch(function () {});
+        VoiceSidebar.refreshAgents();
+      }
+    }, 500);
+  }
+
   // --- State label map (also in VoiceState.STATE_LABELS) ---
   var _STATE_LABELS = {
     idle: 'Idle',
@@ -77,7 +95,12 @@ window.VoiceChatController = (function () {
     VoiceState.fetchInFlight = false; // Reset in-flight guard for new agent
     if (VoiceState.fetchDebounceTimer) { clearTimeout(VoiceState.fetchDebounceTimer); VoiceState.fetchDebounceTimer = null; }
     var messagesEl = document.getElementById('chat-messages');
-    if (messagesEl) messagesEl.innerHTML = '';
+    if (messagesEl) {
+      messagesEl.innerHTML = '';
+      // Wire scroll-to-bottom mark-read (idempotent — removes previous listener)
+      messagesEl.removeEventListener('scroll', _debouncedMarkRead);
+      messagesEl.addEventListener('scroll', _debouncedMarkRead);
+    }
     var bannersEl = document.getElementById('attention-banners');
     if (bannersEl) bannersEl.innerHTML = '';
 

@@ -112,9 +112,18 @@ window.VoiceSSEHandler = (function () {
   }
 
   function handleTurnCreated(data) {
-    if (VoiceState.currentScreen !== 'chat') return;
     if (!data || !data.agent_id) return;
-    if (parseInt(data.agent_id, 10) !== parseInt(VoiceState.targetAgentId, 10)) return;
+
+    // Track unread for agents not currently viewed
+    var turnAgentId = parseInt(data.agent_id, 10);
+    var isTargetAgent = (turnAgentId === parseInt(VoiceState.targetAgentId, 10));
+    if (!isTargetAgent && (data.intent === 'completion' || data.intent === 'question')) {
+      VoiceState.unreadAgentIds[turnAgentId] = true;
+      VoiceSidebar.refreshAgents();
+    }
+
+    if (VoiceState.currentScreen !== 'chat') return;
+    if (!isTargetAgent) return;
     if (data.is_internal) return;
     if (!data.text || !data.text.trim()) return;
 

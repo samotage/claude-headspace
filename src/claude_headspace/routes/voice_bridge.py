@@ -196,6 +196,7 @@ def _agent_to_voice_dict(agent: Agent, include_ended_fields: bool = False) -> di
         "persona_name": persona_name,
         "persona_role": persona_role,
         "started_at": agent.started_at.isoformat() if agent.started_at else None,
+        "has_unread": agent.voice_unread_since is not None,
         "channel": channel,
     }
 
@@ -1418,6 +1419,23 @@ def voice_shutdown_agent(agent_id: int):
     return jsonify(
         {"voice": voice, "message": result.message, "latency_ms": latency_ms}
     ), 200
+
+
+@voice_bridge_bp.route(
+    "/api/voice/agents/<int:agent_id>/mark-read", methods=["POST"]
+)
+def voice_mark_agent_read(agent_id: int):
+    """Clear voice unread indicator for an agent."""
+    agent = db.session.get(Agent, agent_id)
+    if not agent:
+        return jsonify({"error": "Agent not found"}), 404
+
+    if agent.voice_unread_since is not None:
+        agent.voice_unread_since = None
+        db.session.commit()
+        broadcast_card_refresh(agent, "voice_mark_read")
+
+    return jsonify({"ok": True}), 200
 
 
 @voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/context", methods=["GET"])

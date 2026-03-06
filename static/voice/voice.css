@@ -1073,6 +1073,10 @@ body.layout-split .channel-card.selected:hover {
   text-overflow: ellipsis;
 }
 
+.agent-card-unread .agent-instruction {
+  font-weight: 700;
+}
+
 .agent-summary {
   font-size: 13px;
   color: var(--text-dim);

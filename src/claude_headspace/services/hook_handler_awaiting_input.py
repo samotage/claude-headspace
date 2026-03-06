@@ -237,6 +237,10 @@ def _handle_awaiting_input(
         if tool_name:
             get_agent_hook_state().set_awaiting_tool(agent.id, tool_name)
 
+        # Set voice unread indicator for QUESTION turns
+        if question_turn and agent.voice_unread_since is None:
+            agent.voice_unread_since = datetime.now(timezone.utc)
+
         # Commit turn FIRST — turn must survive even if state transition fails.
         _helpers.db.session.commit()
 

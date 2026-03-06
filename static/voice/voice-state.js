@@ -81,6 +81,7 @@ window.VoiceState = (function () {
   var _channelLoadingMore = false; // loading guard
   var _channelOldestMessageTime = null; // ISO cursor for ?before=
   var _channelMembersBySlug = {};       // { slug: [{persona_name, persona_slug}, ...] }
+  var _unreadAgentIds = {};              // { agentId: true } for agents with unseen turns
   var _unreadChannelSlugs = {};         // { slug: true } for channels with unseen messages
   var _channelPickerOpen = false;       // create channel bottom sheet
 
@@ -253,6 +254,8 @@ window.VoiceState = (function () {
     set channelOldestMessageTime(v) { _channelOldestMessageTime = v; },
     get channelMembersBySlug() { return _channelMembersBySlug; },
     set channelMembersBySlug(v) { _channelMembersBySlug = v; },
+    get unreadAgentIds() { return _unreadAgentIds; },
+    set unreadAgentIds(v) { _unreadAgentIds = v; },
     get unreadChannelSlugs() { return _unreadChannelSlugs; },
     set unreadChannelSlugs(v) { _unreadChannelSlugs = v; },
     get channelPickerOpen() { return _channelPickerOpen; },
