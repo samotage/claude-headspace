@@ -342,9 +342,13 @@ body.layout-stacked .chat-focus-link {
   align-items: flex-start;
   gap: 8px;
 }
-body.layout-stacked .chat-header-info .chat-state-pill {
-  align-self: flex-start;
+body.layout-stacked .chat-header-info > .chat-state-pill {
+  display: block;
+  width: -webkit-fit-content;
+  width: fit-content;
   margin-left: 0;
+  margin-right: auto;
+  align-self: stretch;
   margin-top: 1px;
 }
 

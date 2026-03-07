@@ -194,6 +194,8 @@ window.VoiceChatController = (function () {
       }
       updateTypingIndicator();
       updateChatStatePill();
+      // Ensure pill is positioned correctly for current layout mode
+      if (VoiceLayout.repositionStatePill) VoiceLayout.repositionStatePill();
       // Show most recent command instruction in header
       updateChatCommandInstruction(data.turns || []);
       updateEndedAgentUI();
