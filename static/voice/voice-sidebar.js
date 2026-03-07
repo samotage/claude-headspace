@@ -565,7 +565,7 @@ window.VoiceSidebar = (function () {
         }
         break;
       case 'info':
-        window.open('/agents/' + agentId, '_blank');
+        VoiceAgentInfo.open(agentId);
         break;
       case 'reconcile':
         CHUtils.apiFetch('/api/agents/' + agentId + '/reconcile', { method: 'POST' })

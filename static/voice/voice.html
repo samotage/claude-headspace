@@ -358,6 +358,18 @@
     </form>
   </div>
 
+  <!-- Agent info slide-out panel (outside app-layout) -->
+  <div id="agent-info-overlay" class="agent-info-overlay"></div>
+  <div id="agent-info-panel" class="agent-info-panel">
+    <div class="settings-panel-header">
+      <h2 id="agent-info-title">Agent Info</h2>
+      <button id="agent-info-close-btn" class="settings-close-btn" aria-label="Close">&times;</button>
+    </div>
+    <div id="agent-info-content" class="agent-info-content">
+      <div class="agent-info-loading">Loading…</div>
+    </div>
+  </div>
+
   <!-- Scripts -->
   <script src="/static/vendor/marked.min.js"></script>
   <script src="/static/vendor/purify.min.js"></script>
@@ -371,6 +383,7 @@
   <script src="/static/js/chat-bubbles.js?v=1"></script>
   <script src="/static/voice/voice-file-upload.js?v=1"></script>
   <script src="/static/voice/voice-settings.js?v=1"></script>
+  <script src="/static/voice/voice-agent-info.js?v=1"></script>
   <script src="/static/voice/voice-layout.js?v=1"></script>
   <script src="/static/voice/voice-chat-renderer.js?v=3"></script>
   <script src="/static/voice/voice-sidebar.js?v=6"></script>

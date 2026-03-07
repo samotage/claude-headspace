@@ -494,8 +494,7 @@ window.VoiceChatController = (function () {
         }
         break;
       case 'info':
-        // Open agent info page in new tab
-        window.open('/agents/' + agentId, '_blank');
+        VoiceAgentInfo.open(agentId);
         break;
       case 'reconcile':
         CHUtils.apiFetch('/api/agents/' + agentId + '/reconcile', { method: 'POST' })
