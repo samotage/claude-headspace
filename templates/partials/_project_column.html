@@ -1,10 +1,10 @@
-<section class="w-full md:w-[480px] md:flex-shrink-0 lg:w-auto lg:flex-shrink lg:flex-1 lg:min-w-[280px] lg:max-w-[480px] bg-surface rounded-lg border border-border overflow-hidden flex flex-col"
+<section class="w-full md:w-[480px] md:flex-shrink-0 lg:w-auto lg:flex-shrink lg:flex-1 lg:min-w-[280px] lg:max-w-[480px] bg-surface rounded-lg border border-border overflow-visible md:overflow-hidden flex flex-col"
          data-project-id="{{ project.id }}"
          style="max-height: calc(100vh - 280px);"
          aria-labelledby="project-{{ project.id }}-heading">
     <!-- Column header -->
-    <div class="p-4 bg-elevated border-b border-cyan/20"
-         style="box-shadow: 0 1px 8px rgba(86,212,221,0.08);">
+    <div class="project-header-band p-4 bg-deep border-b-2 border-cyan/30 sticky top-0 z-10 md:static"
+         style="box-shadow: 0 2px 12px rgba(86,212,221,0.12);">
         <!-- Heading row: dots + project name + brain reboot -->
         <div class="flex items-start justify-between">
             <div class="flex items-center gap-3">
@@ -21,7 +21,7 @@
                         role="status" aria-label="Idle"></span>
                 </div>
 
-                <h2 id="project-{{ project.id }}-heading" class="font-semibold font-display text-xl">
+                <h2 id="project-{{ project.id }}-heading" class="font-semibold font-display text-2xl">
                     <a href="/projects/{{ project.slug }}" class="text-cyan hover:text-primary text-glow-cyan transition-colors">{{ project.name }}</a>
                 </h2>
                 {% if project.staleness and project.staleness.tier == 'stale' %}

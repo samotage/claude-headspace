@@ -51,6 +51,19 @@
 
 /* Form well — recessed input styling */
 @layer components {
+    /* Project header band — sticky on mobile, stronger visual anchor */
+    .project-header-band {
+        border-top: 3px solid rgba(86, 212, 221, 0.35);
+    }
+
+    /* On mobile, remove section max-height so page scrolls naturally (enables sticky headers) */
+    @media (max-width: 767px) {
+        [data-project-id] {
+            max-height: none !important;
+            overflow: visible;
+        }
+    }
+
     .form-well {
         background: var(--bg-void);
         border: 1px solid var(--border-bright);

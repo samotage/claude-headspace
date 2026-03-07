@@ -626,6 +626,21 @@ a:hover {
   }
 }
 
+/* Project header band — sticky on mobile, stronger visual anchor */
+
+.project-header-band {
+  border-top: 3px solid rgba(86, 212, 221, 0.35);
+}
+
+/* On mobile, remove section max-height so page scrolls naturally (enables sticky headers) */
+
+@media (max-width: 767px) {
+  [data-project-id] {
+    max-height: none !important;
+    overflow: visible;
+  }
+}
+
 .form-well {
   background: var(--bg-void);
   border: 1px solid var(--border-bright);
@@ -751,6 +766,10 @@ select.form-well {
   right: 1rem;
 }
 
+.top-0 {
+  top: 0px;
+}
+
 .top-1 {
   top: 0.25rem;
 }
@@ -765,6 +784,10 @@ select.form-well {
 
 .top-4 {
   top: 1rem;
+}
+
+.z-10 {
+  z-index: 10;
 }
 
 .z-50 {
@@ -5355,6 +5378,10 @@ button.channel-chat-member-pill.focus-highlight {
 }
 
 @media (min-width: 768px) {
+  .md\:static {
+    position: static;
+  }
+
   .md\:inset-8 {
     inset: 2rem;
   }
@@ -5385,6 +5412,10 @@ button.channel-chat-member-pill.focus-highlight {
 
   .md\:gap-4 {
     gap: 1rem;
+  }
+
+  .md\:overflow-hidden {
+    overflow: hidden;
   }
 
   .md\:overflow-x-auto {
