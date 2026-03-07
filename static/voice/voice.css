@@ -331,6 +331,25 @@ body.layout-stacked .chat-hero-badge .agent-hero {
 body.layout-stacked .chat-hero-badge .agent-hero-trail {
   font-size: 0.7rem;
 }
+/* Hide duplicate persona badge on mobile — hero already shows persona name */
+body.layout-stacked .chat-persona-badge {
+  display: none !important;
+}
+/* Wrap state pill to second row on mobile */
+body.layout-stacked .header-slot {
+  flex-wrap: wrap;
+}
+body.layout-stacked .header-slot .chat-focus-link {
+  flex: 1 1 0;
+  min-width: 0;
+}
+body.layout-stacked .header-slot #agent-chat-kebab-btn {
+  order: 2;
+}
+body.layout-stacked .header-slot .chat-state-pill {
+  order: 3;
+  margin-left: 0;
+}
 
 /* --- Split mode (landscape >= 768px, or width >= 1024px) --- */
 body.layout-split #app-layout {
