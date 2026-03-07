@@ -336,29 +336,15 @@ body.layout-stacked .chat-hero-badge .agent-hero-trail {
 body.layout-stacked .chat-persona-badge {
   display: none !important;
 }
-/* Mobile header: grid layout — hero+info on row 1, pill on row 2 aligned with info */
+/* Mobile header: hero left, info column right with pill inside it */
 body.layout-stacked .chat-focus-link {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto;
-  gap: 2px 8px;
-  align-items: start;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }
-body.layout-stacked .chat-focus-link > .chat-hero-badge {
-  grid-row: 1;
-  grid-column: 1;
-  padding-top: 1px;
-}
-body.layout-stacked .chat-focus-link > .chat-header-info {
-  grid-row: 1;
-  grid-column: 2;
-  min-width: 0;
-}
-body.layout-stacked .chat-focus-link > .chat-state-pill {
-  grid-row: 2;
-  grid-column: 2;
-  margin-left: 0;
-  justify-self: start;
+body.layout-stacked .chat-header-info .chat-state-pill {
+  align-self: flex-start;
+  margin-top: 1px;
 }
 
 /* --- Split mode (landscape >= 768px, or width >= 1024px) --- */

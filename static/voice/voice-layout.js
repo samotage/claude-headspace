@@ -62,9 +62,11 @@ window.VoiceLayout = (function () {
     var headerSlot = document.getElementById('header-agent-slot');
     if (!headerInfo || !headerSlot) return;
     if (VoiceState.layoutMode === 'stacked') {
-      // Append pill to end of chat-focus-link; flex-wrap drops it to its own row
-      var focusLink = document.getElementById('chat-focus-link');
-      if (focusLink && pill.parentElement !== focusLink) focusLink.appendChild(pill);
+      // Append pill inside chat-header-info, after agent name
+      var agentName = document.getElementById('chat-agent-name');
+      if (agentName && pill.parentElement !== headerInfo) {
+        agentName.insertAdjacentElement('afterend', pill);
+      }
     } else {
       // Restore to header-slot, before the kebab button
       var kebab = document.getElementById('agent-chat-kebab-btn');
