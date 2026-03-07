@@ -506,6 +506,16 @@ window.VoiceSidebar = (function () {
     window.open('/api/agents/' + agentId + '/transcript', '_blank');
   }
 
+  // --- Agent lookup helper ---
+
+  function _getAgentById(agentId) {
+    var all = (VoiceState.agents || []).concat(VoiceState.endedAgents || []);
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].agent_id === agentId) return all[i];
+    }
+    return null;
+  }
+
   // --- Portal kebab menu action builders ---
 
   function _buildVoiceActions(btn) {
@@ -516,6 +526,7 @@ window.VoiceSidebar = (function () {
       return [
         { id: 'download-transcript', label: 'Download Transcript', icon: I.download || '' },
         { id: 'context', label: 'Fetch context', icon: I.context || '' },
+        { id: 'info', label: 'Agent info', icon: I.info || '' },
         'divider',
         { id: 'revive', label: 'Revive', icon: I.revive || '' }
       ];
@@ -523,10 +534,14 @@ window.VoiceSidebar = (function () {
 
     var actions = [
       { id: 'download-transcript', label: 'Download Transcript', icon: I.download || '' },
-      { id: 'context', label: 'Fetch context', icon: I.context || '' }
+      { id: 'context', label: 'Fetch context', icon: I.context || '' },
+      { id: 'attach', label: 'Attach to terminal', icon: I.attach || '' },
+      { id: 'info', label: 'Agent info', icon: I.info || '' },
+      { id: 'reconcile', label: 'Reconcile', icon: I.reconcile || '' }
     ];
     if (btn.getAttribute('data-persona-name')) {
       actions.push({ id: 'handoff', label: 'Handoff', icon: I.handoff || '', className: 'handoff-action' });
+      actions.push({ id: 'promote', label: 'Create Group Channel', icon: I.promote || '' });
     }
     actions.push('divider');
     actions.push({ id: 'dismiss', label: 'Dismiss agent', icon: I.dismiss || '', className: 'kill-action' });
@@ -541,11 +556,36 @@ window.VoiceSidebar = (function () {
       case 'context':
         checkAgentContext(agentId);
         break;
+      case 'attach':
+        var agent = _getAgentById(agentId);
+        if (agent && agent.tmux_session) {
+          VoiceAPI.attachAgent(agentId).catch(function () {});
+        } else {
+          VoiceAPI.focusAgent(agentId).catch(function () {});
+        }
+        break;
+      case 'info':
+        window.open('/agents/' + agentId, '_blank');
+        break;
+      case 'reconcile':
+        CHUtils.apiFetch('/api/agents/' + agentId + '/reconcile', { method: 'POST' })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data.error) showToast('Reconcile failed: ' + data.error);
+            else showToast('Reconciliation started');
+          })
+          .catch(function () { showToast('Reconcile failed'); });
+        break;
       case 'dismiss':
         shutdownAgent(agentId);
         break;
       case 'handoff':
         handoffAgent(agentId);
+        break;
+      case 'promote':
+        var agentData = _getAgentById(agentId);
+        var personaSlug = agentData ? agentData.persona_slug : null;
+        VoiceChatController.promoteToGroup(agentId, personaSlug);
         break;
       case 'revive':
         CHUtils.apiFetch('/api/agents/' + agentId + '/revive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })

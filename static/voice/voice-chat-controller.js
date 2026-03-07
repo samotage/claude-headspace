@@ -444,6 +444,7 @@ window.VoiceChatController = (function () {
 
     if (isEnded) {
       return [
+        { id: 'download-transcript', label: 'Download Transcript', icon: I.download || '' },
         { id: 'context', label: 'Fetch context', icon: I.context || '' },
         { id: 'info', label: 'Agent info', icon: I.info || '' },
         'divider',
@@ -452,6 +453,7 @@ window.VoiceChatController = (function () {
     }
 
     var actions = [
+      { id: 'download-transcript', label: 'Download Transcript', icon: I.download || '' },
       { id: 'context', label: 'Fetch context', icon: I.context || '' },
       { id: 'attach', label: 'Attach to terminal', icon: I.attach || '' },
       { id: 'info', label: 'Agent info', icon: I.info || '' },
@@ -476,6 +478,9 @@ window.VoiceChatController = (function () {
   /** Handle agent chat kebab action. */
   function handleAgentChatAction(actionId, agentId) {
     switch (actionId) {
+      case 'download-transcript':
+        window.open('/api/agents/' + agentId + '/transcript', '_blank');
+        break;
       case 'context':
         VoiceAPI.getAgentContext(agentId).catch(function () {});
         break;
@@ -574,9 +579,12 @@ window.VoiceChatController = (function () {
     return slug;
   }
 
-  /** Promote a 1:1 agent chat to a group channel. */
-  function _promoteToGroup(agentId) {
-    var currentPersonaSlug = VoiceState.chatAgentPersonaSlug;
+  /** Promote a 1:1 agent chat to a group channel.
+   *  @param {string} agentId
+   *  @param {string} [personaSlug] - optional; falls back to VoiceState.chatAgentPersonaSlug
+   */
+  function _promoteToGroup(agentId, personaSlug) {
+    var currentPersonaSlug = personaSlug || VoiceState.chatAgentPersonaSlug;
     VoiceAPI.getActivePersonas().then(function (data) {
       var allPersonas = Array.isArray(data) ? data : (data && data.personas) ? data.personas : [];
       // Filter out the current agent's persona
@@ -913,6 +921,7 @@ window.VoiceChatController = (function () {
     sendChatWithAttachment: sendChatWithAttachment,
     sendCommand: sendCommand,
     sendSelect: sendSelect,
-    openAgentChatKebab: openAgentChatKebab
+    openAgentChatKebab: openAgentChatKebab,
+    promoteToGroup: _promoteToGroup
   };
 })();
