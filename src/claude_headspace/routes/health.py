@@ -55,6 +55,14 @@ def health_check():
     # Check SSE health
     sse_health = get_sse_health()
 
+    # Check Redis health
+    redis_health = {}
+    redis_manager = current_app.extensions.get("redis_manager")
+    if redis_manager is not None:
+        redis_health = redis_manager.get_health_status()
+    else:
+        redis_health = {"status": "disabled", "enabled": False, "available": False}
+
     # Determine overall status
     if db_connected and sse_health.get("status") in ("healthy", "not_initialized"):
         overall_status = "healthy"
@@ -73,6 +81,7 @@ def health_check():
         "status": overall_status,
         "version": version,
         "database": "connected" if db_connected else "disconnected",
+        "redis": redis_health,
         "sse": sse_health,
         "background_threads": background_threads,
     }

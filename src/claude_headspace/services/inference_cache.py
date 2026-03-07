@@ -1,5 +1,6 @@
-"""In-memory cache for inference results."""
+"""Inference cache with Redis-backed storage and in-memory fallback."""
 
+import json
 import logging
 import threading
 import time
@@ -23,11 +24,34 @@ class CacheEntry:
     def is_expired(self) -> bool:
         return (time.monotonic() - self.cached_at) > self.ttl_seconds
 
+    def to_dict(self) -> dict:
+        """Serialise to dict for Redis storage."""
+        return {
+            "result_text": self.result_text,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "model": self.model,
+            "cached_at": self.cached_at,
+            "ttl_seconds": self.ttl_seconds,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CacheEntry":
+        """Deserialise from dict (Redis storage)."""
+        return cls(
+            result_text=data["result_text"],
+            input_tokens=int(data["input_tokens"]),
+            output_tokens=int(data["output_tokens"]),
+            model=data["model"],
+            cached_at=float(data["cached_at"]),
+            ttl_seconds=int(data["ttl_seconds"]),
+        )
+
 
 class InferenceCache:
-    """Thread-safe in-memory cache keyed by content hash with LRU eviction."""
+    """Thread-safe cache keyed by content hash with Redis backing and in-memory fallback."""
 
-    def __init__(self, config: dict, max_size: int = 500):
+    def __init__(self, config: dict, max_size: int = 500, redis_manager=None):
         cache_config = config.get("openrouter", {}).get("cache", {})
         self.enabled = cache_config.get("enabled", True)
         self.ttl_seconds = cache_config.get("ttl_seconds", 300)
@@ -37,6 +61,19 @@ class InferenceCache:
         self._hits = 0
         self._misses = 0
         self._insert_count = 0
+        self._redis = redis_manager
+
+    def _redis_available(self) -> bool:
+        return self._redis is not None and self._redis.is_available
+
+    @property
+    def using_redis(self) -> bool:
+        """Whether the cache is currently backed by Redis."""
+        return self._redis_available()
+
+    def _redis_key(self, input_hash: str) -> str:
+        """Build Redis key for a cache entry."""
+        return self._redis.key("cache", input_hash)
 
     def get(self, input_hash: str) -> CacheEntry | None:
         """Look up a cached result by input hash.
@@ -48,6 +85,19 @@ class InferenceCache:
             self._misses += 1
             return None
 
+        # Try Redis first
+        if self._redis_available():
+            try:
+                raw = self._redis.get(self._redis_key(input_hash))
+                if raw is not None:
+                    data = json.loads(raw)
+                    entry = CacheEntry.from_dict(data)
+                    self._hits += 1
+                    return entry
+            except Exception:
+                pass  # Fall through to in-memory
+
+        # In-memory fallback
         with self._lock:
             entry = self._cache.get(input_hash)
             if entry is None:
@@ -83,6 +133,18 @@ class InferenceCache:
             ttl_seconds=self.ttl_seconds,
         )
 
+        # Try Redis first
+        if self._redis_available():
+            try:
+                self._redis.set(
+                    self._redis_key(input_hash),
+                    json.dumps(entry.to_dict()),
+                    ex=self.ttl_seconds,
+                )
+            except Exception:
+                pass  # Fall through to in-memory
+
+        # Always store in memory as well (fast local reads + fallback)
         with self._lock:
             self._cache[input_hash] = entry
             self._insert_count += 1
@@ -123,4 +185,5 @@ class InferenceCache:
                 "hits": self._hits,
                 "misses": self._misses,
                 "hit_rate": self._hits / max(self._hits + self._misses, 1),
+                "redis_backed": self.using_redis,
             }

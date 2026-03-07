@@ -39,15 +39,18 @@ def broadcast_card_refresh(agent, reason):
 def _get_lifecycle_manager():
     """Create a CommandLifecycleManager with the current app's event writer."""
     event_writer = None
+    redis_manager = None
     try:
         from flask import current_app
 
         event_writer = current_app.extensions.get("event_writer")
+        redis_manager = current_app.extensions.get("redis_manager")
     except RuntimeError:
         logger.debug("No app context for event_writer")
     return CommandLifecycleManager(
         session=db.session,
         event_writer=event_writer,
+        redis_manager=redis_manager,
     )
 
 

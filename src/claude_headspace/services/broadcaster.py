@@ -64,7 +64,11 @@ class SSEEvent:
 
 
 class Broadcaster:
-    """SSE event broadcaster. Thread-safe client registry with filtered delivery."""
+    """SSE event broadcaster. Thread-safe client registry with filtered delivery.
+
+    Supports Redis-backed event ID counter and replay buffer (Redis Stream).
+    Falls back to in-memory counter and deque when Redis is unavailable.
+    """
 
     # Default replay buffer size — keeps last N events for reconnecting clients.
     DEFAULT_REPLAY_BUFFER_SIZE = 500
@@ -76,17 +80,22 @@ class Broadcaster:
         connection_timeout: float = 300.0,
         retry_after: int = 5,
         replay_buffer_size: int = DEFAULT_REPLAY_BUFFER_SIZE,
+        redis_manager=None,
     ) -> None:
         self._max_connections = max_connections
         self._heartbeat_interval = heartbeat_interval
         self._connection_timeout = connection_timeout
         self._retry_after = retry_after
+        self._replay_buffer_size = replay_buffer_size
 
         self._clients: dict[str, SSEClient] = {}
         self._lock = threading.Lock()
         self._event_id_counter = 0
 
-        # Ring buffer for event replay on reconnect
+        # Redis manager for persistent event ID and replay buffer
+        self._redis = redis_manager
+
+        # In-memory ring buffer for event replay (fallback)
         self._replay_buffer: collections.deque[SSEEvent] = collections.deque(
             maxlen=replay_buffer_size
         )
@@ -95,11 +104,25 @@ class Broadcaster:
         self._cleanup_thread: threading.Thread | None = None
         self._shutdown_event = threading.Event()
 
+        # Recover event ID counter from Redis if available
+        if self._redis is not None and self._redis.is_available:
+            try:
+                stored = self._redis.get(self._redis.key("sse", "event_id"))
+                if stored is not None:
+                    self._event_id_counter = int(stored)
+                    logger.info(
+                        "Recovered SSE event ID counter from Redis: %d",
+                        self._event_id_counter,
+                    )
+            except Exception as e:
+                logger.warning("Failed to recover event ID from Redis: %s", e)
+
         logger.info(
             f"Broadcaster initialized: max_connections={max_connections}, "
             f"heartbeat_interval={heartbeat_interval}s, "
             f"connection_timeout={connection_timeout}s, "
-            f"replay_buffer_size={replay_buffer_size}"
+            f"replay_buffer_size={replay_buffer_size}, "
+            f"redis_backed={self._redis is not None and self._redis.is_available}"
         )
 
     @property
@@ -114,6 +137,43 @@ class Broadcaster:
     @property
     def retry_after(self) -> int:
         return self._retry_after
+
+    def _next_event_id(self) -> int:
+        """Get the next event ID, using Redis INCR if available."""
+        if self._redis is not None and self._redis.is_available:
+            try:
+                new_id = self._redis.incr(self._redis.key("sse", "event_id"))
+                if new_id is not None:
+                    self._event_id_counter = new_id
+                    return new_id
+            except Exception:
+                pass  # Fall through to in-memory
+
+        # In-memory fallback
+        self._event_id_counter += 1
+        return self._event_id_counter
+
+    def _store_replay_event(self, event: SSEEvent) -> None:
+        """Store an event in the replay buffer (Redis Stream or in-memory deque)."""
+        # Try Redis Stream first
+        if self._redis is not None and self._redis.is_available:
+            try:
+                self._redis.xadd(
+                    self._redis.key("sse", "replay"),
+                    {
+                        "event_type": event.event_type,
+                        "data": json.dumps(event.data),
+                        "event_id": str(event.event_id),
+                        "timestamp": event.timestamp.isoformat(),
+                    },
+                    maxlen=self._replay_buffer_size,
+                )
+            except Exception:
+                pass  # Fall through to in-memory
+
+        # Always store in-memory deque as well (fallback)
+        with self._lock:
+            self._replay_buffer.append(event)
 
     def start(self) -> None:
         """Start the broadcaster and cleanup thread."""
@@ -194,17 +254,15 @@ class Broadcaster:
     def broadcast(self, event_type: str, data: dict) -> int:
         """Broadcast an event to all matching clients. Returns send count."""
         with self._lock:
-            self._event_id_counter += 1
-            event_id = self._event_id_counter
+            event_id = self._next_event_id()
             # Copy client list under lock to avoid holding it during iteration
             clients_snapshot = list(self._clients.values())
         # Include the event_id in the data payload so clients can detect gaps
         data["_eid"] = event_id
         event = SSEEvent(event_type=event_type, data=data, event_id=event_id)
 
-        # Store in replay buffer for reconnecting clients
-        with self._lock:
-            self._replay_buffer.append(event)
+        # Store in replay buffer
+        self._store_replay_event(event)
 
         sent_count = 0
         now = datetime.now(timezone.utc)
@@ -234,7 +292,35 @@ class Broadcaster:
         """Get events from the replay buffer after a given event ID.
 
         Used for reconnecting clients that send Last-Event-ID.
+        Tries Redis Stream first, falls back to in-memory deque.
         """
+        # Try Redis Stream first
+        if self._redis is not None and self._redis.is_available:
+            try:
+                stream_key = self._redis.key("sse", "replay")
+                entries = self._redis.xrange(stream_key)
+                events = []
+                for _stream_id, fields in entries:
+                    eid = int(fields.get("event_id", "0"))
+                    if eid <= after_event_id:
+                        continue
+                    try:
+                        data = json.loads(fields.get("data", "{}"))
+                    except json.JSONDecodeError:
+                        continue
+                    event = SSEEvent(
+                        event_type=fields.get("event_type", "unknown"),
+                        data=data,
+                        event_id=eid,
+                    )
+                    if filters and not self._event_matches_filters(event, filters):
+                        continue
+                    events.append(event)
+                return events
+            except Exception:
+                pass  # Fall through to in-memory
+
+        # In-memory fallback
         with self._lock:
             events = []
             for event in self._replay_buffer:
@@ -273,9 +359,7 @@ class Broadcaster:
         # Inject gap notification if events were dropped for this client
         if client.has_gap:
             client.has_gap = False
-            with self._lock:
-                self._event_id_counter += 1
-                gap_id = self._event_id_counter
+            gap_id = self._next_event_id()
             return SSEEvent(
                 event_type="gap",
                 data={
@@ -326,11 +410,13 @@ class Broadcaster:
                 logger.info(f"Cleaned up stale connection: {client_id}")
 
     def get_health_status(self) -> dict[str, Any]:
+        redis_backed = self._redis is not None and self._redis.is_available
         return {
             "status": "healthy" if self._running else "stopped",
             "active_connections": self.active_connections,
             "max_connections": self._max_connections,
             "running": self._running,
+            "redis_backed": redis_backed,
         }
 
 
@@ -350,7 +436,7 @@ def get_broadcaster() -> Broadcaster:
         return _broadcaster
 
 
-def init_broadcaster(config: dict | None = None) -> Broadcaster:
+def init_broadcaster(config: dict | None = None, redis_manager=None) -> Broadcaster:
     """Initialize the global broadcaster instance."""
     global _broadcaster
     with _broadcaster_lock:
@@ -363,6 +449,7 @@ def init_broadcaster(config: dict | None = None) -> Broadcaster:
             connection_timeout=sse_config.get("connection_timeout_seconds", 300),
             retry_after=sse_config.get("retry_after_seconds", 5),
             replay_buffer_size=sse_config.get("replay_buffer_size", 500),
+            redis_manager=redis_manager,
         )
         _broadcaster.start()
         return _broadcaster

@@ -522,9 +522,11 @@ def _handle_voice_command_idle_or_processing(
         from ..services.command_lifecycle import CommandLifecycleManager
 
         event_writer = current_app.extensions.get("event_writer")
+        redis_manager = current_app.extensions.get("redis_manager")
         lifecycle = CommandLifecycleManager(
             session=db.session,
             event_writer=event_writer,
+            redis_manager=redis_manager,
         )
         turn_result = lifecycle.process_turn(
             agent=agent,
@@ -1421,9 +1423,7 @@ def voice_shutdown_agent(agent_id: int):
     ), 200
 
 
-@voice_bridge_bp.route(
-    "/api/voice/agents/<int:agent_id>/mark-read", methods=["POST"]
-)
+@voice_bridge_bp.route("/api/voice/agents/<int:agent_id>/mark-read", methods=["POST"])
 def voice_mark_agent_read(agent_id: int):
     """Clear voice unread indicator for an agent."""
     agent = db.session.get(Agent, agent_id)

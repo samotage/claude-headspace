@@ -16,13 +16,18 @@ class PriorityScoringService:
     """Scores all active agents 0-100 using LLM inference with objective/waypoint context."""
 
     def __init__(
-        self, inference_service: InferenceService, app=None, config: dict | None = None
+        self,
+        inference_service: InferenceService,
+        app=None,
+        config: dict | None = None,
+        redis_manager=None,
     ):
         self._inference = inference_service
         self._app = app
         self._debounce_timer: threading.Timer | None = None
         self._debounce_lock = threading.Lock()
         self._scoring_lock = threading.Lock()
+        self._redis = redis_manager
 
         ps_config = (config or {}).get("openrouter", {}).get("priority_scoring", {})
         self._debounce_seconds = ps_config.get("debounce_seconds", 5.0)

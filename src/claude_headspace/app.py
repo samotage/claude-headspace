@@ -172,6 +172,23 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     elif not app.config.get("TESTING"):
         logger.info("Exception reporter disabled (no webhook URL or secret)")
 
+    # Initialize Redis manager (before any service that might use it)
+    from .services.redis_manager import RedisManager
+
+    redis_enabled = get_value(config, "redis", "enabled", default=True)
+    if redis_enabled and not app.config.get("TESTING"):
+        redis_manager = RedisManager(config=config)
+        app.extensions["redis_manager"] = redis_manager
+        logger.info(
+            "Redis manager initialized (available=%s)", redis_manager.is_available
+        )
+    else:
+        app.extensions["redis_manager"] = None
+        if app.config.get("TESTING"):
+            logger.debug("Redis manager disabled (testing mode)")
+        else:
+            logger.info("Redis manager disabled by configuration")
+
     # Initialize database (continues even if connection fails)
     db_connected = init_database(app, config)
     app.config["DATABASE_CONNECTED"] = db_connected
@@ -182,7 +199,9 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
 
         try:
             db_url = get_database_url(config)
-            event_writer = create_event_writer(db_url, config)
+            event_writer = create_event_writer(
+                db_url, config, redis_manager=app.extensions.get("redis_manager")
+            )
             app.extensions["event_writer"] = event_writer
             logger.info("Event writer initialized for audit logging")
         except Exception as e:
@@ -195,7 +214,9 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     # Initialize broadcaster for SSE
     from .services.broadcaster import init_broadcaster, shutdown_broadcaster
 
-    broadcaster = init_broadcaster(config)
+    broadcaster = init_broadcaster(
+        config, redis_manager=app.extensions.get("redis_manager")
+    )
     app.extensions["broadcaster"] = broadcaster
     logger.info("SSE broadcaster initialized")
 
@@ -212,6 +233,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
     inference_service = InferenceService(
         config=config,
         database_url=get_database_url(config) if db_connected else None,
+        redis_manager=app.extensions.get("redis_manager"),
     )
     app.extensions["inference_service"] = inference_service
     if inference_service.is_available:
@@ -250,6 +272,7 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
             inference_service=inference_service,
             app=app,
             config=config,
+            redis_manager=app.extensions.get("redis_manager"),
         )
         app.extensions["priority_scoring_service"] = priority_scoring_service
         logger.info("Priority scoring service initialized")
@@ -284,13 +307,23 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
             ),
             rate_limit_seconds=notif_config.get("rate_limit_seconds", 5),
             dashboard_url=dashboard_url,
-        )
+        ),
+        redis_manager=app.extensions.get("redis_manager"),
     )
     notification_service = get_notification_service()
     app.extensions["notification_service"] = notification_service
     # Eagerly check terminal-notifier availability for startup diagnostics
     notification_service.is_available()
     logger.info(f"Notification service initialized (dashboard_url={dashboard_url})")
+
+    # Initialize agent hook state singleton with Redis backing
+    from .services.hook_agent_state import configure_agent_hook_state
+
+    agent_hook_state = configure_agent_hook_state(
+        redis_manager=app.extensions.get("redis_manager")
+    )
+    app.extensions["agent_hook_state"] = agent_hook_state
+    logger.info("Agent hook state initialized")
 
     # Initialize archive service
     from .services.archive_service import ArchiveService
@@ -475,7 +508,9 @@ def create_app(config_path: str = "config.yaml", testing: bool = False) -> Flask
         from .services.remote_agent_service import RemoteAgentService
         from .services.session_token import SessionTokenService
 
-        session_token_service = SessionTokenService()
+        session_token_service = SessionTokenService(
+            redis_manager=app.extensions.get("redis_manager")
+        )
         app.extensions["session_token_service"] = session_token_service
 
         remote_agent_service = RemoteAgentService(

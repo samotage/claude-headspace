@@ -32,7 +32,10 @@ class WriteResult:
 
 @dataclass
 class EventWriterMetrics:
-    """Metrics for monitoring event writer health."""
+    """Metrics for monitoring event writer health.
+
+    Backed by Redis when available, with in-memory fallback.
+    """
 
     total_writes: int = 0
     successful_writes: int = 0
@@ -40,20 +43,56 @@ class EventWriterMetrics:
     last_write_timestamp: datetime | None = None
     last_error: str | None = None
     _lock: Lock = field(default_factory=Lock)
+    _redis: Any = field(default=None, repr=False)
 
     def record_success(self) -> None:
         with self._lock:
             self.total_writes += 1
             self.successful_writes += 1
             self.last_write_timestamp = datetime.now(timezone.utc)
+        if self._redis is not None and self._redis.is_available:
+            try:
+                key = self._redis.key("event_writer", "metrics")
+                self._redis.hincrby(key, "total_writes", 1)
+                self._redis.hincrby(key, "successful_writes", 1)
+                self._redis.hset(
+                    key, "last_write_timestamp", datetime.now(timezone.utc).isoformat()
+                )
+            except Exception:
+                pass
 
     def record_failure(self, error: str) -> None:
         with self._lock:
             self.total_writes += 1
             self.failed_writes += 1
             self.last_error = error
+        if self._redis is not None and self._redis.is_available:
+            try:
+                key = self._redis.key("event_writer", "metrics")
+                self._redis.hincrby(key, "total_writes", 1)
+                self._redis.hincrby(key, "failed_writes", 1)
+                self._redis.hset(key, "last_error", error)
+            except Exception:
+                pass
 
     def get_stats(self) -> dict[str, Any]:
+        # Try Redis first for potentially more accurate counts (post-restart)
+        if self._redis is not None and self._redis.is_available:
+            try:
+                key = self._redis.key("event_writer", "metrics")
+                data = self._redis.hgetall(key)
+                if data:
+                    return {
+                        "total_writes": int(data.get("total_writes", 0)),
+                        "successful_writes": int(data.get("successful_writes", 0)),
+                        "failed_writes": int(data.get("failed_writes", 0)),
+                        "last_write_timestamp": data.get("last_write_timestamp"),
+                        "last_error": data.get("last_error"),
+                        "redis_backed": True,
+                    }
+            except Exception:
+                pass
+
         with self._lock:
             return {
                 "total_writes": self.total_writes,
@@ -65,6 +104,7 @@ class EventWriterMetrics:
                     else None
                 ),
                 "last_error": self.last_error,
+                "redis_backed": False,
             }
 
 
@@ -76,6 +116,7 @@ class EventWriter:
         database_url: str,
         retry_attempts: int = 3,
         retry_delay_ms: int = 100,
+        redis_manager=None,
     ) -> None:
         self._database_url = database_url
         self._retry_attempts = retry_attempts
@@ -88,7 +129,7 @@ class EventWriter:
             pool_recycle=3600,
         )
         self._session_factory = sessionmaker(bind=self._engine)
-        self._metrics = EventWriterMetrics()
+        self._metrics = EventWriterMetrics(_redis=redis_manager)
         self._running = True
         logger.info("EventWriter initialized")
 
@@ -207,11 +248,14 @@ class EventWriter:
         return {"running": self._running, "metrics": self._metrics.get_stats()}
 
 
-def create_event_writer(database_url: str, config: dict | None = None) -> EventWriter:
+def create_event_writer(
+    database_url: str, config: dict | None = None, redis_manager=None
+) -> EventWriter:
     """Create an EventWriter instance with configuration."""
     event_config = (config or {}).get("event_system", {})
     return EventWriter(
         database_url=database_url,
         retry_attempts=event_config.get("write_retry_attempts", 3),
         retry_delay_ms=event_config.get("write_retry_delay_ms", 100),
+        redis_manager=redis_manager,
     )
