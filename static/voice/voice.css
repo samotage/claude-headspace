@@ -335,20 +335,11 @@ body.layout-stacked .chat-hero-badge .agent-hero-trail {
 body.layout-stacked .chat-persona-badge {
   display: none !important;
 }
-/* Wrap state pill to second row on mobile */
-body.layout-stacked .header-slot {
-  flex-wrap: wrap;
-}
-body.layout-stacked .header-slot .chat-focus-link {
-  flex: 1 1 0;
-  min-width: 0;
-}
-body.layout-stacked .header-slot #agent-chat-kebab-btn {
-  order: 2;
-}
-body.layout-stacked .header-slot .chat-state-pill {
-  order: 3;
+/* State pill sits underneath the name on mobile (relocated by JS into chat-header-info) */
+body.layout-stacked .chat-header-info .chat-state-pill {
   margin-left: 0;
+  align-self: flex-start;
+  margin-top: 2px;
 }
 
 /* --- Split mode (landscape >= 768px, or width >= 1024px) --- */
