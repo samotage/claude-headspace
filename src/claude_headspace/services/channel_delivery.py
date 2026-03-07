@@ -19,7 +19,9 @@ Design decisions from Inter-Agent Communication Workshop:
 import logging
 import re
 import threading
+import time
 from collections import deque
+from datetime import datetime, timedelta, timezone
 
 from ..database import db
 from ..models.agent import Agent
@@ -71,6 +73,198 @@ class ChannelDeliveryService:
             .get("channels", {})
             .get("max_queue_depth_per_agent", 50)
         )
+        self._reconstruction_cutoff_minutes = (
+            app.config.get("APP_CONFIG", {})
+            .get("channels", {})
+            .get("reconstruction_cutoff_minutes", 60)
+        )
+
+        # Reconstruct in-memory state from DB on init (error-isolated)
+        try:
+            with app.app_context():
+                self._reconstruct_state()
+        except Exception as e:
+            logger.warning(
+                f"State reconstruction failed during init — "
+                f"service will operate without reconstruction: {e}"
+            )
+
+    # ── State reconstruction ─────────────────────────────────────────
+
+    def _reconstruct_state(self) -> None:
+        """Reconstruct _channel_prompted and _queue from database records.
+
+        Called once during __init__ to recover in-memory state after a
+        server restart. Clears existing state before repopulating for
+        idempotency.
+        """
+        t0 = time.monotonic()
+
+        # Clear existing state for idempotency
+        self._channel_prompted.clear()
+        with self._queue_lock:
+            self._queue.clear()
+
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            minutes=self._reconstruction_cutoff_minutes
+        )
+
+        self._reconstruct_channel_prompted(cutoff)
+        self._reconstruct_queue(cutoff)
+
+        elapsed_ms = (time.monotonic() - t0) * 1000
+
+        if self._channel_prompted or self._queue:
+            queue_summary = {
+                aid: len(q) for aid, q in self._queue.items()
+            }
+            logger.info(
+                f"State reconstruction complete in {elapsed_ms:.1f}ms: "
+                f"prompted={sorted(self._channel_prompted)}, "
+                f"queued={queue_summary}"
+            )
+        else:
+            logger.info(
+                f"State reconstruction complete in {elapsed_ms:.1f}ms: "
+                f"no state to reconstruct"
+            )
+
+    @staticmethod
+    def _active_agent_memberships() -> list:
+        """Query active ChannelMembership records with live (non-ended) agents.
+
+        Returns:
+            List of ChannelMembership objects joined with their Agent.
+        """
+        return (
+            ChannelMembership.query
+            .join(Agent, ChannelMembership.agent_id == Agent.id)
+            .filter(
+                ChannelMembership.status == "active",
+                ChannelMembership.agent_id.isnot(None),
+                Agent.ended_at.is_(None),
+            )
+            .all()
+        )
+
+    @staticmethod
+    def _last_agent_message_time(channel_id: int, agent_id: int):
+        """Get the most recent sent_at timestamp for an agent in a channel.
+
+        Returns:
+            datetime or None if the agent has never sent a message.
+        """
+        from sqlalchemy import func
+
+        return (
+            db.session.query(func.max(Message.sent_at))
+            .filter(
+                Message.channel_id == channel_id,
+                Message.agent_id == agent_id,
+            )
+            .scalar()
+        )
+
+    def _reconstruct_channel_prompted(self, cutoff: datetime) -> None:
+        """Reconstruct _channel_prompted set from message timestamps.
+
+        For each active membership with a live agent, compare the most recent
+        message sent TO the channel (by others) vs the most recent message
+        sent BY this agent. If the agent hasn't responded to the latest
+        message (or has never sent a message), add it to _channel_prompted.
+
+        Args:
+            cutoff: Messages older than this are ignored (stale threshold).
+        """
+        from sqlalchemy import func
+
+        memberships = self._active_agent_memberships()
+        if not memberships:
+            return
+
+        for membership in memberships:
+            agent_id = membership.agent_id
+            channel_id = membership.channel_id
+
+            # Most recent message in this channel NOT sent by this agent
+            last_received = (
+                db.session.query(func.max(Message.sent_at))
+                .filter(
+                    Message.channel_id == channel_id,
+                    Message.sent_at >= cutoff,
+                    db.or_(
+                        Message.agent_id != agent_id,
+                        Message.agent_id.is_(None),
+                    ),
+                )
+                .scalar()
+            )
+
+            if last_received is None:
+                # No recent messages from others — nothing to respond to
+                continue
+
+            last_sent = self._last_agent_message_time(channel_id, agent_id)
+
+            if last_sent is None or last_received > last_sent:
+                self._channel_prompted.add(agent_id)
+                logger.debug(
+                    f"Reconstruction: agent {agent_id} added to "
+                    f"_channel_prompted (channel_id={channel_id})"
+                )
+
+    def _reconstruct_queue(self, cutoff: datetime) -> None:
+        """Reconstruct _queue dict for agents in unsafe command states.
+
+        For each active membership with a live agent whose current command
+        is in an unsafe state, find channel messages sent after the agent's
+        last response that were not sent by this agent and add them to
+        the queue.
+
+        Args:
+            cutoff: Messages older than this are ignored (stale threshold).
+        """
+        memberships = self._active_agent_memberships()
+        if not memberships:
+            return
+
+        for membership in memberships:
+            agent = membership.agent
+            agent_id = membership.agent_id
+            channel_id = membership.channel_id
+
+            # Check if agent is in an unsafe state
+            current_cmd = agent.get_current_command()
+            if current_cmd is None:
+                # No active command = effectively IDLE (safe)
+                continue
+            if current_cmd.state in _SAFE_DELIVERY_STATES:
+                continue
+
+            # Agent is in unsafe state — find undelivered messages
+            last_sent = self._last_agent_message_time(channel_id, agent_id)
+
+            # Find messages from others after the agent's last response
+            query = Message.query.filter(
+                Message.channel_id == channel_id,
+                Message.sent_at >= cutoff,
+                db.or_(
+                    Message.agent_id != agent_id,
+                    Message.agent_id.is_(None),
+                ),
+            )
+            if last_sent is not None:
+                query = query.filter(Message.sent_at > last_sent)
+
+            messages = query.order_by(Message.sent_at.asc()).all()
+
+            if messages:
+                with self._queue_lock:
+                    self._queue[agent_id] = deque(m.id for m in messages)
+                logger.debug(
+                    f"Reconstruction: queued {len(messages)} message(s) "
+                    f"for agent {agent_id} (channel_id={channel_id})"
+                )
 
     # ── Envelope formatting ──────────────────────────────────────────
 
