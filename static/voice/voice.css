@@ -3459,6 +3459,23 @@ body.layout-split .hamburger-btn { display: none; }
   margin-bottom: 24px;
 }
 
+.agent-info-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.agent-info-section-header h3 {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0;
+}
+
 .agent-info-section h3 {
   font-size: 11px;
   color: var(--text-dim);
@@ -3467,6 +3484,30 @@ body.layout-split .hamburger-btn { display: none; }
   margin-bottom: 4px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
+}
+
+.agent-info-copy-btn {
+  display: inline-block;
+  font-family: var(--font-mono, 'SF Mono', 'Fira Code', monospace);
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.agent-info-copy-btn:hover {
+  color: var(--accent, #e0b073);
+  border-color: var(--accent, #e0b073);
+}
+
+.agent-info-copy-success {
+  color: var(--success, #73e0a0) !important;
+  border-color: var(--success, #73e0a0) !important;
 }
 
 .agent-info-row {
