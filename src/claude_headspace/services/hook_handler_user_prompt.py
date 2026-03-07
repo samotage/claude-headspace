@@ -224,7 +224,9 @@ def process_user_prompt_submit(
             )
 
         agent.last_seen_at = datetime.now(timezone.utc)
-        get_agent_hook_state().clear_awaiting_tool(agent.id)  # Clear pending tool tracking
+        get_agent_hook_state().clear_awaiting_tool(
+            agent.id
+        )  # Clear pending tool tracking
         get_agent_hook_state().consume_progress_texts(agent.id)  # New response cycle
 
         # Handoff intent detection: check the raw prompt text (before
@@ -260,7 +262,9 @@ def process_user_prompt_submit(
                     f"plan_approved: agent_id={agent.id}, command_id={current_command.id}"
                 )
 
-        pending_file_meta = get_agent_hook_state().consume_file_metadata_pending(agent.id)
+        pending_file_meta = get_agent_hook_state().consume_file_metadata_pending(
+            agent.id
+        )
         # When the upload endpoint set file metadata, it includes a clean
         # display text (_display_text) so the turn stores the user's text
         # rather than the raw tmux text (which has the file path prepended).

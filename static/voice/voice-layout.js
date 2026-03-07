@@ -43,12 +43,37 @@ window.VoiceLayout = (function () {
   function initLayoutMode() {
     VoiceState.layoutMode = shouldUseStackedLayout() ? 'stacked' : 'split';
     document.body.classList.add('layout-' + VoiceState.layoutMode);
+    repositionStatePill();
   }
 
   function applyLayoutMode() {
     if (VoiceState.currentScreen === 'setup') return;
     applyScreenVisibility(VoiceState.currentScreen);
+    repositionStatePill();
     if (_highlightSelected) _highlightSelected();
+  }
+
+  // Move the state pill into chat-header-info on mobile so it sits below the name,
+  // and back to header-slot on desktop so it stays in the header row.
+  function repositionStatePill() {
+    var pill = document.getElementById('chat-state-pill');
+    if (!pill) return;
+    var headerInfo = document.querySelector('.chat-header-info');
+    var headerSlot = document.getElementById('header-agent-slot');
+    if (!headerInfo || !headerSlot) return;
+    if (VoiceState.layoutMode === 'stacked') {
+      // Insert right after chat-agent-name, not at the end
+      var agentName = document.getElementById('chat-agent-name');
+      if (agentName && pill.parentElement !== headerInfo) {
+        agentName.insertAdjacentElement('afterend', pill);
+      } else if (pill.parentElement !== headerInfo) {
+        headerInfo.insertBefore(pill, headerInfo.firstChild);
+      }
+    } else {
+      // Restore to header-slot, before the kebab button
+      var kebab = document.getElementById('agent-chat-kebab-btn');
+      if (pill.parentElement !== headerSlot) headerSlot.insertBefore(pill, kebab);
+    }
   }
 
   // ---- Screen management ----
@@ -198,6 +223,7 @@ window.VoiceLayout = (function () {
     initLayoutMode: initLayoutMode,
     detectLayoutMode: detectLayoutMode,
     applyLayoutMode: applyLayoutMode,
+    repositionStatePill: repositionStatePill,
     // Screen
     showScreen: showScreen,
     getCurrentScreen: getCurrentScreen,

@@ -1545,16 +1545,12 @@ class TestStateReconstruction:
         # First reconstruction
         delivery_service._reconstruct_state()
         prompted_first = set(delivery_service._channel_prompted)
-        queue_first = {
-            k: list(v) for k, v in delivery_service._queue.items()
-        }
+        queue_first = {k: list(v) for k, v in delivery_service._queue.items()}
 
         # Second reconstruction — should produce identical results
         delivery_service._reconstruct_state()
         prompted_second = set(delivery_service._channel_prompted)
-        queue_second = {
-            k: list(v) for k, v in delivery_service._queue.items()
-        }
+        queue_second = {k: list(v) for k, v in delivery_service._queue.items()}
 
         assert prompted_first == prompted_second
         assert queue_first == queue_second

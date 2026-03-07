@@ -28,12 +28,19 @@ class NotificationPreferences:
 
 
 class NotificationService:
-    """macOS system notifications via terminal-notifier with rate limiting."""
+    """macOS system notifications via terminal-notifier with rate limiting.
+
+    Rate limits are backed by Redis when available, with in-memory fallback.
+    """
 
     # Per-channel rate limit window in seconds
     CHANNEL_RATE_LIMIT_SECONDS = 30
 
-    def __init__(self, preferences: NotificationPreferences | None = None):
+    def __init__(
+        self,
+        preferences: NotificationPreferences | None = None,
+        redis_manager=None,
+    ):
         self.preferences = preferences or NotificationPreferences()
         self._rate_limit_tracker: dict[str, float] = {}
         self._rate_limit_lock = threading.Lock()
@@ -42,6 +49,10 @@ class NotificationService:
         self._availability_checked = False
         self._is_available = False
         self._first_failure_logged = False
+        self._redis = redis_manager
+
+    def _redis_available(self) -> bool:
+        return self._redis is not None and self._redis.is_available
 
     def is_available(self) -> bool:
         """Check if terminal-notifier is installed."""
@@ -62,6 +73,15 @@ class NotificationService:
         return self.is_available()
 
     def _is_rate_limited(self, agent_id: str) -> bool:
+        # Try Redis first
+        if self._redis_available():
+            try:
+                key = self._redis.key("ratelimit", "agent", str(agent_id))
+                return self._redis.exists(key)
+            except Exception:
+                pass  # Fall through to in-memory
+
+        # In-memory fallback
         with self._rate_limit_lock:
             now = time.time()
             # Prune stale entries (older than 10x the rate limit window)
@@ -74,6 +94,15 @@ class NotificationService:
             return (now - last) < self.preferences.rate_limit_seconds
 
     def _update_rate_limit(self, agent_id: str) -> None:
+        # Try Redis first
+        if self._redis_available():
+            try:
+                key = self._redis.key("ratelimit", "agent", str(agent_id))
+                self._redis.set(key, "1", ex=self.preferences.rate_limit_seconds)
+            except Exception:
+                pass  # Fall through to in-memory
+
+        # Always update in-memory as well (fallback)
         with self._rate_limit_lock:
             self._rate_limit_tracker[agent_id] = time.time()
 
@@ -179,15 +208,16 @@ class NotificationService:
             return False
 
     def _is_channel_rate_limited(self, channel_slug: str) -> bool:
-        """Check if a channel notification is rate-limited (30s window).
+        """Check if a channel notification is rate-limited (30s window)."""
+        # Try Redis first
+        if self._redis_available():
+            try:
+                key = self._redis.key("ratelimit", "channel", channel_slug)
+                return self._redis.exists(key)
+            except Exception:
+                pass  # Fall through to in-memory
 
-        Args:
-            channel_slug: The channel slug to check.
-
-        Returns:
-            True if a notification was sent for this channel within the
-            rate limit window.
-        """
+        # In-memory fallback
         with self._channel_rate_limit_lock:
             now = time.time()
             # Prune stale entries
@@ -203,6 +233,15 @@ class NotificationService:
 
     def _update_channel_rate_limit(self, channel_slug: str) -> None:
         """Update the channel rate limit tracker."""
+        # Try Redis first
+        if self._redis_available():
+            try:
+                key = self._redis.key("ratelimit", "channel", channel_slug)
+                self._redis.set(key, "1", ex=self.CHANNEL_RATE_LIMIT_SECONDS)
+            except Exception:
+                pass  # Fall through to in-memory
+
+        # Always update in-memory as well (fallback)
         with self._channel_rate_limit_lock:
             self._channel_rate_limit_tracker[channel_slug] = time.time()
 
@@ -212,19 +251,7 @@ class NotificationService:
         sender_name: str,
         content_preview: str,
     ) -> bool:
-        """Send a macOS notification for a channel message.
-
-        Per-channel rate-limited to 30s to avoid notification spam
-        during active channel conversations.
-
-        Args:
-            channel_slug: The channel slug.
-            sender_name: The name of the message sender.
-            content_preview: A preview of the message content.
-
-        Returns:
-            True if sent or rate-limited (suppressed), False on failure.
-        """
+        """Send a macOS notification for a channel message."""
         if not self.preferences.enabled:
             return True
         if not self.is_available():
@@ -304,8 +331,12 @@ def get_notification_service() -> NotificationService:
         return _notification_service
 
 
-def configure_notification_service(preferences: NotificationPreferences) -> None:
+def configure_notification_service(
+    preferences: NotificationPreferences, redis_manager=None
+) -> None:
     """Configure the global notification service."""
     global _notification_service
     with _notification_lock:
-        _notification_service = NotificationService(preferences)
+        _notification_service = NotificationService(
+            preferences, redis_manager=redis_manager
+        )

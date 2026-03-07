@@ -203,10 +203,12 @@ class CommandLifecycleManager:
         self,
         session: Session,
         event_writer: EventWriter | None = None,
+        redis_manager=None,
     ) -> None:
         self._session = session
         self._event_writer = event_writer
         self._pending_summarisations: list[SummarisationRequest] = []
+        self._redis = redis_manager
 
     def get_pending_summarisations(self) -> list[SummarisationRequest]:
         """Return and clear pending summarisation requests."""

@@ -505,9 +505,11 @@ class AgentReaper:
 
             try:
                 event_writer = self._app.extensions.get("event_writer")
+                redis_manager = self._app.extensions.get("redis_manager")
                 lifecycle = CommandLifecycleManager(
                     session=db.session,
                     event_writer=event_writer,
+                    redis_manager=redis_manager,
                 )
             except Exception as e:
                 logger.warning(f"Could not create lifecycle manager: {e}")

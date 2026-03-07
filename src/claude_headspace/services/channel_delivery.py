@@ -115,9 +115,7 @@ class ChannelDeliveryService:
         elapsed_ms = (time.monotonic() - t0) * 1000
 
         if self._channel_prompted or self._queue:
-            queue_summary = {
-                aid: len(q) for aid, q in self._queue.items()
-            }
+            queue_summary = {aid: len(q) for aid, q in self._queue.items()}
             logger.info(
                 f"State reconstruction complete in {elapsed_ms:.1f}ms: "
                 f"prompted={sorted(self._channel_prompted)}, "
@@ -137,8 +135,7 @@ class ChannelDeliveryService:
             List of ChannelMembership objects joined with their Agent.
         """
         return (
-            ChannelMembership.query
-            .join(Agent, ChannelMembership.agent_id == Agent.id)
+            ChannelMembership.query.join(Agent, ChannelMembership.agent_id == Agent.id)
             .filter(
                 ChannelMembership.status == "active",
                 ChannelMembership.agent_id.isnot(None),

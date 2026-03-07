@@ -26,7 +26,11 @@ class InferenceService:
     """Orchestrates inference calls with caching, rate limiting, and logging."""
 
     def __init__(
-        self, config: dict, db_session_factory=None, database_url: str | None = None
+        self,
+        config: dict,
+        db_session_factory=None,
+        database_url: str | None = None,
+        redis_manager=None,
     ):
         """Initialize the inference service.
 
@@ -34,6 +38,7 @@ class InferenceService:
             config: Application configuration dictionary
             db_session_factory: Callable that returns a database session (for logging, backward compat)
             database_url: Database URL for independent logging session (preferred over db_session_factory)
+            redis_manager: Optional RedisManager for cache backing
         """
         self.config = config
         self._log_session_factory = None
@@ -45,7 +50,7 @@ class InferenceService:
             self._log_session_factory = db_session_factory
 
         self.client = OpenRouterClient(config)
-        self.cache = InferenceCache(config)
+        self.cache = InferenceCache(config, redis_manager=redis_manager)
         self.rate_limiter = InferenceRateLimiter(config)
 
         or_config = config.get("openrouter", {})

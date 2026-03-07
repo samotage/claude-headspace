@@ -73,7 +73,13 @@ class FileWatcher:
         self._awaiting_input_timeout = awaiting_input_timeout
         self._app = app
 
-        self._registry = SessionRegistry()
+        redis_manager = None
+        if app:
+            try:
+                redis_manager = app.extensions.get("redis_manager")
+            except Exception:
+                pass
+        self._registry = SessionRegistry(redis_manager=redis_manager)
         self._git_metadata = GitMetadata()
         self._parsers: dict[UUID, JSONLParser] = {}
 
