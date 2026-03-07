@@ -326,30 +326,20 @@ body.layout-stacked .chat-focus-link {
   gap: 8px;
 }
 body.layout-stacked .chat-hero-badge .agent-hero {
-  font-size: 1.5rem;
-  line-height: 1.1;
+  font-size: 1.2rem;
 }
 body.layout-stacked .chat-hero-badge .agent-hero-trail {
-  font-size: 0.85rem;
+  font-size: 0.7rem;
 }
 /* Hide duplicate persona badge on mobile — hero already shows persona name */
 body.layout-stacked .chat-persona-badge {
   display: none !important;
 }
-/* Mobile header: hero left, info column right with pill inside it */
-body.layout-stacked .chat-focus-link {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-body.layout-stacked .chat-header-info > .chat-state-pill {
-  display: block;
-  width: -webkit-fit-content;
-  width: fit-content;
+/* State pill sits underneath the name on mobile (relocated by JS into chat-header-info) */
+body.layout-stacked .chat-header-info .chat-state-pill {
   margin-left: 0;
-  margin-right: auto;
-  align-self: stretch;
-  margin-top: 1px;
+  align-self: flex-start;
+  margin-top: 2px;
 }
 
 /* --- Split mode (landscape >= 768px, or width >= 1024px) --- */
