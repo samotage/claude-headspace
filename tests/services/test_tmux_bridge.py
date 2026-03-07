@@ -243,8 +243,8 @@ class TestSendText:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_send_success_no_ghost(self, mock_run, mock_capture):
         """Without autocomplete ghost text, only text + Enter are sent (no Escape)."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -267,8 +267,8 @@ class TestSendText:
         second_call = mock_run.call_args_list[1]
         assert second_call[0][0] == ["tmux", "send-keys", "-t", "%5", "Enter"]
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_send_success_with_ghost(self, mock_run, mock_capture):
         """With autocomplete ghost text detected pre-typing, Escape is sent first."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -298,8 +298,8 @@ class TestSendText:
         third_call = mock_run.call_args_list[2]
         assert third_call[0][0] == ["tmux", "send-keys", "-t", "%5", "Enter"]
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_tmux_not_installed(self, mock_run, mock_capture):
         mock_capture.return_value = ""
         mock_run.side_effect = FileNotFoundError("tmux not found")
@@ -309,8 +309,8 @@ class TestSendText:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.TMUX_NOT_INSTALLED
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_pane_not_found(self, mock_run, mock_capture):
         mock_capture.return_value = ""
         mock_run.side_effect = subprocess.CalledProcessError(
@@ -322,8 +322,8 @@ class TestSendText:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_timeout(self, mock_run, mock_capture):
         mock_capture.return_value = ""
         mock_run.side_effect = subprocess.TimeoutExpired("tmux", 5)
@@ -333,8 +333,8 @@ class TestSendText:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.TIMEOUT
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_unexpected_error(self, mock_run, mock_capture):
         mock_capture.return_value = ""
         mock_run.side_effect = RuntimeError("something broke")
@@ -353,7 +353,7 @@ class TestSendKeys:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_send_single_key(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
 
@@ -363,7 +363,7 @@ class TestSendKeys:
         mock_run.assert_called_once()
         assert mock_run.call_args[0][0] == ["tmux", "send-keys", "-t", "%5", "Escape"]
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_send_multiple_keys(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
 
@@ -372,7 +372,7 @@ class TestSendKeys:
         assert result.success is True
         assert mock_run.call_count == 2
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_tmux_not_installed(self, mock_run):
         mock_run.side_effect = FileNotFoundError()
 
@@ -390,7 +390,7 @@ class TestCheckHealth:
         assert result.available is False
         assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_pane_exists_with_claude(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -402,7 +402,7 @@ class TestCheckHealth:
         assert result.available is True
         assert result.running is True
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_pane_exists_with_node(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -414,7 +414,7 @@ class TestCheckHealth:
         assert result.available is True
         assert result.running is True
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_pane_exists_without_claude(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -426,7 +426,7 @@ class TestCheckHealth:
         assert result.available is True
         assert result.running is False
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_pane_not_found(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -438,7 +438,7 @@ class TestCheckHealth:
         assert result.available is False
         assert result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_tmux_not_installed(self, mock_run):
         mock_run.side_effect = FileNotFoundError()
 
@@ -447,7 +447,7 @@ class TestCheckHealth:
         assert result.available is False
         assert result.error_type == TmuxBridgeErrorType.TMUX_NOT_INSTALLED
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_tmux_server_not_running(self, mock_run):
         mock_run.side_effect = subprocess.CalledProcessError(
             1, "tmux", stderr=b"no server running on /tmp/tmux-501/default"
@@ -458,7 +458,7 @@ class TestCheckHealth:
         assert result.available is False
         assert result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_timeout(self, mock_run):
         mock_run.side_effect = subprocess.TimeoutExpired("tmux", 5)
 
@@ -471,7 +471,7 @@ class TestCheckHealth:
 class TestCapturePane:
     """Tests for capture_pane function."""
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.read.subprocess.run")
     def test_capture_success(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -483,7 +483,7 @@ class TestCapturePane:
         assert result == "line 1\nline 2\nline 3\n"
         mock_run.assert_called_once()
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.read.subprocess.run")
     def test_capture_failure_returns_empty(self, mock_run):
         mock_run.side_effect = subprocess.CalledProcessError(1, "tmux")
 
@@ -495,21 +495,21 @@ class TestCapturePane:
 class TestCapturePaneJoinWrapped:
     """Tests for capture_pane join_wrapped (-J) flag."""
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.read.subprocess.run")
     def test_join_wrapped_false_no_j_flag(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout=b"output\n")
         capture_pane("%5", lines=50, join_wrapped=False)
         cmd = mock_run.call_args[0][0]
         assert "-J" not in cmd
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.read.subprocess.run")
     def test_join_wrapped_true_includes_j_flag(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout=b"output\n")
         capture_pane("%5", lines=50, join_wrapped=True)
         cmd = mock_run.call_args[0][0]
         assert "-J" in cmd
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.read.subprocess.run")
     def test_default_no_j_flag(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout=b"output\n")
         capture_pane("%5")
@@ -520,7 +520,7 @@ class TestCapturePaneJoinWrapped:
 class TestPermissionCaptureUsesJoinWrapped:
     """Tests that permission capture functions pass join_wrapped=True to wait_for_pattern."""
 
-    @patch("claude_headspace.services.tmux_bridge.wait_for_pattern")
+    @patch("claude_headspace.services.tmux_bridge.read.wait_for_pattern")
     def test_capture_permission_options_uses_join_wrapped(self, mock_wait):
         mock_wait.return_value = WaitResult(
             matched=True,
@@ -531,7 +531,7 @@ class TestPermissionCaptureUsesJoinWrapped:
         _, kwargs = mock_wait.call_args
         assert kwargs["join_wrapped"] is True
 
-    @patch("claude_headspace.services.tmux_bridge.wait_for_pattern")
+    @patch("claude_headspace.services.tmux_bridge.read.wait_for_pattern")
     def test_capture_permission_context_uses_join_wrapped(self, mock_wait):
         mock_wait.return_value = WaitResult(
             matched=True,
@@ -549,7 +549,7 @@ class TestPermissionCaptureUsesJoinWrapped:
 class TestListPanes:
     """Tests for list_panes function."""
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_list_panes_success(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -562,7 +562,7 @@ class TestListPanes:
         assert result[0] == PaneInfo("%0", "main", "bash", "/home/user")
         assert result[1] == PaneInfo("%5", "work", "claude", "/path/to/project")
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_list_panes_failure_returns_empty(self, mock_run):
         mock_run.side_effect = FileNotFoundError()
 
@@ -650,7 +650,7 @@ class TestParsePermissionOptions:
 class TestCapturePermissionOptions:
     """Tests for capture_permission_options function."""
 
-    @patch("claude_headspace.services.tmux_bridge.wait_for_pattern")
+    @patch("claude_headspace.services.tmux_bridge.read.wait_for_pattern")
     def test_success_on_first_attempt(self, mock_wait):
         mock_wait.return_value = WaitResult(
             matched=True,
@@ -663,7 +663,7 @@ class TestCapturePermissionOptions:
         assert result == [{"label": "Yes"}, {"label": "No"}]
         mock_wait.assert_called_once()
 
-    @patch("claude_headspace.services.tmux_bridge.wait_for_pattern")
+    @patch("claude_headspace.services.tmux_bridge.read.wait_for_pattern")
     def test_wait_matches_after_delay(self, mock_wait):
         """wait_for_pattern handles internal retries — returns content on match."""
         mock_wait.return_value = WaitResult(
@@ -676,7 +676,7 @@ class TestCapturePermissionOptions:
 
         assert result == [{"label": "Yes"}, {"label": "No"}]
 
-    @patch("claude_headspace.services.tmux_bridge.wait_for_pattern")
+    @patch("claude_headspace.services.tmux_bridge.read.wait_for_pattern")
     def test_all_attempts_fail(self, mock_wait):
         mock_wait.return_value = WaitResult(
             matched=False,
@@ -689,7 +689,7 @@ class TestCapturePermissionOptions:
 
         assert result is None
 
-    @patch("claude_headspace.services.tmux_bridge.wait_for_pattern")
+    @patch("claude_headspace.services.tmux_bridge.read.wait_for_pattern")
     def test_three_options_parsed(self, mock_wait):
         mock_wait.return_value = WaitResult(
             matched=True,
@@ -835,7 +835,7 @@ class TestParsePermissionContext:
 class TestCapturePermissionContext:
     """Tests for capture_permission_context function."""
 
-    @patch("claude_headspace.services.tmux_bridge.wait_for_pattern")
+    @patch("claude_headspace.services.tmux_bridge.read.wait_for_pattern")
     def test_success_on_first_attempt(self, mock_wait):
         mock_wait.return_value = WaitResult(
             matched=True,
@@ -858,7 +858,7 @@ class TestCapturePermissionContext:
         assert result["options"] is not None
         mock_wait.assert_called_once()
 
-    @patch("claude_headspace.services.tmux_bridge.wait_for_pattern")
+    @patch("claude_headspace.services.tmux_bridge.read.wait_for_pattern")
     def test_wait_matches_after_delay(self, mock_wait):
         mock_wait.return_value = WaitResult(
             matched=True,
@@ -878,7 +878,7 @@ class TestCapturePermissionContext:
 
         assert result is not None
 
-    @patch("claude_headspace.services.tmux_bridge.wait_for_pattern")
+    @patch("claude_headspace.services.tmux_bridge.read.wait_for_pattern")
     def test_all_attempts_fail(self, mock_wait):
         mock_wait.return_value = WaitResult(
             matched=False,
@@ -926,7 +926,7 @@ class TestGetPaneClientTty:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_pane_found_with_client(self, mock_run):
         """Test successful TTY resolution: pane found, client attached."""
         mock_run.side_effect = [
@@ -949,7 +949,7 @@ class TestGetPaneClientTty:
         assert result.session_name == "main"
         assert mock_run.call_count == 2
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_no_client_attached(self, mock_run):
         """Test when pane found but no client attached to session."""
         mock_run.side_effect = [
@@ -966,7 +966,7 @@ class TestGetPaneClientTty:
         assert result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND
         assert "No client attached" in result.error_message
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_pane_not_found(self, mock_run):
         """Test when pane ID not in list-panes output."""
         mock_run.return_value = MagicMock(
@@ -980,7 +980,7 @@ class TestGetPaneClientTty:
         assert result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND
         assert mock_run.call_count == 1  # Only list-panes, no list-clients
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_tmux_not_installed(self, mock_run):
         """Test when tmux binary not on PATH."""
         mock_run.side_effect = FileNotFoundError("tmux not found")
@@ -990,7 +990,7 @@ class TestGetPaneClientTty:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.TMUX_NOT_INSTALLED
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_list_panes_timeout(self, mock_run):
         """Test timeout during list-panes."""
         mock_run.side_effect = subprocess.TimeoutExpired("tmux", 5)
@@ -1000,7 +1000,7 @@ class TestGetPaneClientTty:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.TIMEOUT
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_list_clients_timeout(self, mock_run):
         """Test timeout during list-clients (after successful list-panes)."""
         mock_run.side_effect = [
@@ -1014,7 +1014,7 @@ class TestGetPaneClientTty:
         assert result.error_type == TmuxBridgeErrorType.TIMEOUT
         assert result.session_name == "main"
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_list_clients_error(self, mock_run):
         """Test CalledProcessError during list-clients."""
         mock_run.side_effect = [
@@ -1042,7 +1042,7 @@ class TestSelectPane:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_success(self, mock_run):
         """Test successful pane selection (select-window + select-pane)."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -1061,7 +1061,7 @@ class TestSelectPane:
         second_call = mock_run.call_args_list[1]
         assert second_call[0][0] == ["tmux", "select-pane", "-t", "%29"]
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_pane_not_found(self, mock_run):
         """Test when pane doesn't exist."""
         mock_run.side_effect = subprocess.CalledProcessError(
@@ -1073,7 +1073,7 @@ class TestSelectPane:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.PANE_NOT_FOUND
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_tmux_not_installed(self, mock_run):
         """Test when tmux binary not on PATH."""
         mock_run.side_effect = FileNotFoundError()
@@ -1083,7 +1083,7 @@ class TestSelectPane:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.TMUX_NOT_INSTALLED
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_timeout(self, mock_run):
         """Test timeout during pane selection."""
         mock_run.side_effect = subprocess.TimeoutExpired("tmux", 5)
@@ -1093,7 +1093,7 @@ class TestSelectPane:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.TIMEOUT
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_unexpected_error(self, mock_run):
         """Test unexpected exception during pane selection."""
         mock_run.side_effect = RuntimeError("something broke")
@@ -1134,8 +1134,8 @@ class TestWaitForPattern:
         assert result.matched is False
         assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.read.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.read._diagnostic_dump")
     def test_match_on_first_poll(self, mock_dump, mock_capture):
         mock_capture.return_value = "  1. Yes\n  2. No\n"
         result = wait_for_pattern(
@@ -1146,8 +1146,8 @@ class TestWaitForPattern:
         assert result.elapsed_ms >= 0
         mock_dump.assert_not_called()
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.read.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.read._diagnostic_dump")
     def test_match_after_retries(self, mock_dump, mock_capture):
         mock_capture.side_effect = [
             "",
@@ -1161,8 +1161,8 @@ class TestWaitForPattern:
         assert mock_capture.call_count == 3
         mock_dump.assert_not_called()
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.read.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.read._diagnostic_dump")
     def test_timeout_calls_diagnostic_dump(self, mock_dump, mock_capture):
         mock_capture.return_value = "no match here\n"
         result = wait_for_pattern(
@@ -1173,8 +1173,8 @@ class TestWaitForPattern:
         assert result.content == "no match here\n"
         mock_dump.assert_called_once()
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.read.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.read._diagnostic_dump")
     def test_content_preserved_on_match(self, mock_dump, mock_capture):
         mock_capture.return_value = "prompt $ hello world\n"
         result = wait_for_pattern(
@@ -1183,8 +1183,8 @@ class TestWaitForPattern:
         assert result.matched is True
         assert "hello world" in result.content
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.read.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.read._diagnostic_dump")
     def test_empty_capture_returns_timeout(self, mock_dump, mock_capture):
         mock_capture.return_value = ""
         result = wait_for_pattern("%5", r"anything", timeout_ms=50, poll_interval_ms=10)
@@ -1195,36 +1195,36 @@ class TestWaitForPattern:
 class TestDiagnosticDump:
     """Tests for _diagnostic_dump helper."""
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.read.capture_pane")
     def test_logs_content(self, mock_capture):
         mock_capture.return_value = "line 1\nline 2\n"
-        with patch("claude_headspace.services.tmux_bridge.logger") as mock_logger:
+        with patch("claude_headspace.services.tmux_bridge.read.logger") as mock_logger:
             _diagnostic_dump("%5", "test context")
             mock_logger.warning.assert_called_once()
             call_msg = mock_logger.warning.call_args[0][0]
             assert "test context" in call_msg
             assert "line 1" in call_msg
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.read.capture_pane")
     def test_truncates_long_content(self, mock_capture):
         mock_capture.return_value = "x" * 3000
-        with patch("claude_headspace.services.tmux_bridge.logger") as mock_logger:
+        with patch("claude_headspace.services.tmux_bridge.read.logger") as mock_logger:
             _diagnostic_dump("%5", "long output")
             call_msg = mock_logger.warning.call_args[0][0]
             assert "truncated" in call_msg
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.read.capture_pane")
     def test_empty_capture(self, mock_capture):
         mock_capture.return_value = ""
-        with patch("claude_headspace.services.tmux_bridge.logger") as mock_logger:
+        with patch("claude_headspace.services.tmux_bridge.read.logger") as mock_logger:
             _diagnostic_dump("%5", "empty")
             call_msg = mock_logger.warning.call_args[0][0]
             assert "empty" in call_msg.lower()
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.read.capture_pane")
     def test_exception_handled(self, mock_capture):
         mock_capture.side_effect = RuntimeError("boom")
-        with patch("claude_headspace.services.tmux_bridge.logger") as mock_logger:
+        with patch("claude_headspace.services.tmux_bridge.read.logger") as mock_logger:
             _diagnostic_dump("%5", "error case")  # should not raise
             mock_logger.warning.assert_called_once()
 
@@ -1237,7 +1237,7 @@ class TestHealthCheckLevel:
         assert HealthCheckLevel.COMMAND == "command"
         assert HealthCheckLevel.PROCESS_TREE == "process_tree"
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_exists_level_only_checks_pane_exists(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1248,7 +1248,7 @@ class TestHealthCheckLevel:
         # EXISTS level does not determine running status
         assert result.running is False
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_exists_level_pane_not_found(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1257,7 +1257,7 @@ class TestHealthCheckLevel:
         result = check_health("%5", level=HealthCheckLevel.EXISTS)
         assert result.available is False
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_command_level_detects_claude(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1267,7 +1267,7 @@ class TestHealthCheckLevel:
         assert result.available is True
         assert result.running is True
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_command_level_detects_no_claude(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1277,9 +1277,9 @@ class TestHealthCheckLevel:
         assert result.available is True
         assert result.running is False
 
-    @patch("claude_headspace.services.tmux_bridge.get_pane_pid")
-    @patch("claude_headspace.services.tmux_bridge._is_process_in_tree")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.get_pane_pid")
+    @patch("claude_headspace.services.tmux_bridge.health._is_process_in_tree")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_process_tree_level_claude_running(self, mock_run, mock_tree, mock_pid):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1293,9 +1293,9 @@ class TestHealthCheckLevel:
         assert result.running is True
         assert result.pid == 12345
 
-    @patch("claude_headspace.services.tmux_bridge.get_pane_pid")
-    @patch("claude_headspace.services.tmux_bridge._is_process_in_tree")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.get_pane_pid")
+    @patch("claude_headspace.services.tmux_bridge.health._is_process_in_tree")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_process_tree_level_no_claude(self, mock_run, mock_tree, mock_pid):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1309,9 +1309,9 @@ class TestHealthCheckLevel:
         assert result.running is False
         assert result.pid == 12345
 
-    @patch("claude_headspace.services.tmux_bridge.get_pane_pid")
-    @patch("claude_headspace.services.tmux_bridge._is_process_in_tree")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.get_pane_pid")
+    @patch("claude_headspace.services.tmux_bridge.health._is_process_in_tree")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_process_tree_fallback_on_error(self, mock_run, mock_tree, mock_pid):
         """When tree check returns None, falls back to command-level result."""
         mock_run.return_value = MagicMock(
@@ -1325,7 +1325,7 @@ class TestHealthCheckLevel:
         assert result.available is True
         assert result.running is True  # Falls back to command-level (node detected)
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_custom_process_names(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1337,7 +1337,7 @@ class TestHealthCheckLevel:
         assert result.available is True
         assert result.running is True
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_custom_process_names_no_match(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1349,7 +1349,7 @@ class TestHealthCheckLevel:
         assert result.available is True
         assert result.running is False
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_default_level_is_command(self, mock_run):
         """Default check_health() behavior should match COMMAND level."""
         mock_run.return_value = MagicMock(
@@ -1364,7 +1364,7 @@ class TestHealthCheckLevel:
 class TestGetPanePid:
     """Tests for get_pane_pid function."""
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_success(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1372,7 +1372,7 @@ class TestGetPanePid:
         )
         assert get_pane_pid("%5") == 12345
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_pane_not_found(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1383,7 +1383,7 @@ class TestGetPanePid:
     def test_invalid_pane_id(self):
         assert get_pane_pid("bad") is None
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.health.subprocess.run")
     def test_tmux_failure(self, mock_run):
         mock_run.side_effect = FileNotFoundError()
         assert get_pane_pid("%5") is None
@@ -1427,53 +1427,57 @@ class TestSendLockRegistry:
         """Releasing a lock for a pane that was never registered is safe."""
         release_send_lock("%999")  # Should not raise
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    def test_concurrent_sends_to_same_pane_are_serialized(self, mock_run):
-        """Two concurrent send_text calls to the same pane don't interleave."""
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane", return_value="> ")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
+    def test_concurrent_sends_to_same_pane_are_serialized(self, mock_run, mock_capture):
+        """Two concurrent send_text calls to the same pane don't interleave.
+
+        Verifies that the per-pane lock serializes subprocess calls: all calls
+        from one send_text complete before any calls from the other begin.
+        """
         import threading
 
-        mock_run.return_value = MagicMock(returncode=0, stdout=b"", stderr=b"")
+        # Track which thread made each subprocess call
+        call_labels = []
 
-        call_order = []
+        def side_effect_run(*args, **kwargs):
+            label = threading.current_thread().name
+            call_labels.append(label)
+            return MagicMock(returncode=0, stdout=b"", stderr=b"")
 
-        original_sleep = __import__("time").sleep
+        mock_run.side_effect = side_effect_run
 
-        def tracked_send(label):
-            """Send text and record when we enter/exit the lock."""
-            call_order.append(f"{label}_start")
+        def do_send(name):
             send_text(
                 "%50",
-                f"msg_{label}",
+                f"msg_{name}",
                 text_enter_delay_ms=0,
                 clear_delay_ms=0,
                 verify_enter=False,
             )
-            call_order.append(f"{label}_end")
 
-        t1 = threading.Thread(target=tracked_send, args=("A",))
-        t2 = threading.Thread(target=tracked_send, args=("B",))
+        t1 = threading.Thread(target=do_send, args=("A",), name="thread-A")
+        t2 = threading.Thread(target=do_send, args=("B",), name="thread-B")
         t1.start()
         t2.start()
         t1.join(timeout=5)
         t2.join(timeout=5)
 
-        # Both should complete (no deadlock)
-        assert "A_start" in call_order
-        assert "A_end" in call_order
-        assert "B_start" in call_order
-        assert "B_end" in call_order
-        # One must finish before the other starts (serialized by lock)
-        a_end = call_order.index("A_end")
-        b_end = call_order.index("B_end")
-        a_start = call_order.index("A_start")
-        b_start = call_order.index("B_start")
-        # Either A finishes before B starts, or B finishes before A starts
-        assert (a_end < b_start) or (b_end < a_start), (
-            f"Sends were not serialized: {call_order}"
+        # Both threads should have made subprocess calls
+        assert "thread-A" in call_labels
+        assert "thread-B" in call_labels
+        # Calls from A and B should not interleave — all A's calls come
+        # before all B's, or vice versa (serialized by the per-pane lock)
+        first_a = call_labels.index("thread-A")
+        last_a = len(call_labels) - 1 - call_labels[::-1].index("thread-A")
+        first_b = call_labels.index("thread-B")
+        last_b = len(call_labels) - 1 - call_labels[::-1].index("thread-B")
+        assert (last_a < first_b) or (last_b < first_a), (
+            f"Subprocess calls were interleaved: {call_labels}"
         )
         release_send_lock("%50")
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_sends_to_different_panes_are_independent(self, mock_run):
         """send_text to different panes can proceed concurrently."""
         import threading
@@ -1504,8 +1508,8 @@ class TestSendLockRegistry:
         release_send_lock("%51")
         release_send_lock("%52")
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_interrupt_and_send_text_reentrant(self, mock_run, mock_capture):
         """interrupt_and_send_text can call send_text without deadlocking (RLock)."""
         mock_run.return_value = MagicMock(returncode=0, stdout=b"", stderr=b"")
@@ -1525,7 +1529,7 @@ class TestSendLockRegistry:
 class TestKillSession:
     """Tests for kill_session function (WU5)."""
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_success(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout=b"", stderr=b"")
         result = kill_session("hs-test-abc123")
@@ -1534,7 +1538,7 @@ class TestKillSession:
         cmd = mock_run.call_args[0][0]
         assert cmd == ["tmux", "kill-session", "-t", "hs-test-abc123"]
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_with_socket_path(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout=b"", stderr=b"")
         result = kill_session("hs-test", socket_path="/tmp/tmux-1000/hs")
@@ -1554,7 +1558,7 @@ class TestKillSession:
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.NO_PANE_ID
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_session_not_found(self, mock_run):
         mock_run.side_effect = subprocess.CalledProcessError(
             1, "tmux", stderr=b"can't find session: hs-test"
@@ -1562,14 +1566,14 @@ class TestKillSession:
         result = kill_session("hs-test")
         assert result.success is False
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_tmux_not_installed(self, mock_run):
         mock_run.side_effect = FileNotFoundError()
         result = kill_session("hs-test")
         assert result.success is False
         assert result.error_type == TmuxBridgeErrorType.TMUX_NOT_INSTALLED
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_timeout(self, mock_run):
         mock_run.side_effect = subprocess.TimeoutExpired("tmux", 5)
         result = kill_session("hs-test")
@@ -1580,7 +1584,7 @@ class TestKillSession:
 class TestListPanesSocketPath:
     """Tests for list_panes socket_path parameter (WU5)."""
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_default_no_socket(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1590,7 +1594,7 @@ class TestListPanesSocketPath:
         cmd = mock_run.call_args[0][0]
         assert "-S" not in cmd
 
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.session.subprocess.run")
     def test_with_socket_path(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1632,8 +1636,8 @@ class TestPaneContentChanged:
 class TestVerifySubmission:
     """Tests for _verify_submission helper."""
 
-    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
     def test_first_attempt_success(self, mock_capture, mock_dump):
         """Content changes on first check → success."""
         mock_capture.return_value = "Processing...\n> "
@@ -1650,9 +1654,9 @@ class TestVerifySubmission:
         assert result is True
         mock_dump.assert_not_called()
 
-    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
     def test_retry_success(self, mock_capture, mock_run, mock_dump):
         """Content unchanged on first check, changes on second → success after retry."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -1682,9 +1686,9 @@ class TestVerifySubmission:
         ]
         assert len(enter_calls) == 1
 
-    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
     def test_all_retries_exhausted(self, mock_capture, mock_run, mock_dump):
         """Content never changes → returns False after all retries."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -1703,9 +1707,9 @@ class TestVerifySubmission:
         assert result is False
         mock_dump.assert_called_once()
 
-    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
     def test_ghost_dismiss_during_retry(self, mock_capture, mock_run, mock_dump):
         """Ghost text detected during retry → dismissed with Escape before retrying Enter."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -1734,9 +1738,9 @@ class TestVerifySubmission:
 class TestSendTextVerifyEnter:
     """Tests for send_text with verify_enter=True."""
 
-    @patch("claude_headspace.services.tmux_bridge._verify_submission")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_verify_enter_true_calls_verification(
         self, mock_run, mock_capture, mock_verify
     ):
@@ -1756,9 +1760,9 @@ class TestSendTextVerifyEnter:
         assert result.success is True
         mock_verify.assert_called_once()
 
-    @patch("claude_headspace.services.tmux_bridge._verify_submission")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_verify_enter_false_skips_verification(
         self, mock_run, mock_capture, mock_verify
     ):
@@ -1777,9 +1781,9 @@ class TestSendTextVerifyEnter:
         assert result.success is True
         mock_verify.assert_not_called()
 
-    @patch("claude_headspace.services.tmux_bridge._verify_submission")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_verify_enter_failure_still_returns_success(
         self, mock_run, mock_capture, mock_verify
     ):
@@ -1798,8 +1802,8 @@ class TestSendTextVerifyEnter:
 
         assert result.success is True
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_detect_ghost_text_false_skips_ghost_detection(
         self, mock_run, mock_capture
     ):
@@ -1820,9 +1824,9 @@ class TestSendTextVerifyEnter:
         assert mock_run.call_count == 2
         mock_capture.assert_not_called()
 
-    @patch("claude_headspace.services.tmux_bridge._verify_submission")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_skip_verify_hint_skips_verification(
         self, mock_run, mock_capture, mock_verify
     ):
@@ -1846,9 +1850,9 @@ class TestSendTextVerifyEnter:
 class TestSendTextSanitisation:
     """Tests for send_text text sanitisation (rstrip only)."""
 
-    @patch("claude_headspace.services.tmux_bridge._verify_submission")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_newlines_preserved_in_body(self, mock_run, mock_capture, mock_verify):
         """Internal newlines are preserved (not flattened to spaces)."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -1865,8 +1869,8 @@ class TestSendTextSanitisation:
         sent_text = text_call[0][0][0][-1]
         assert "\n" in sent_text
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_trailing_whitespace_stripped(self, mock_run, mock_capture):
         """Trailing whitespace is stripped."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -1888,9 +1892,9 @@ class TestSendTextSanitisation:
 class TestSendKeysVerifyEnter:
     """Tests for send_keys with verify_enter parameter."""
 
-    @patch("claude_headspace.services.tmux_bridge._verify_submission")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_verify_enter_true_triggers_verification(
         self, mock_run, mock_capture, mock_verify
     ):
@@ -1912,8 +1916,8 @@ class TestSendKeysVerifyEnter:
         # Baseline capture should have been called
         mock_capture.assert_called_once()
 
-    @patch("claude_headspace.services.tmux_bridge._verify_submission")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_verify_enter_false_skips_verification(self, mock_run, mock_verify):
         """Default verify_enter=False does not verify."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -1923,9 +1927,9 @@ class TestSendKeysVerifyEnter:
         assert result.success is True
         mock_verify.assert_not_called()
 
-    @patch("claude_headspace.services.tmux_bridge._verify_submission")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send._verify_submission")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_verify_enter_failure_still_returns_success(
         self, mock_run, mock_capture, mock_verify
     ):
@@ -2000,8 +2004,8 @@ class TestExtractVerificationSnippet:
 class TestVerifySubmissionTextPresence:
     """Tests for _verify_submission with text-presence verification."""
 
-    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
     def test_text_presence_success(self, mock_capture, mock_dump):
         """Snippet NOT in pane content → Enter accepted (text cleared)."""
         # Post-Enter content does NOT contain the snippet
@@ -2020,9 +2024,9 @@ class TestVerifySubmissionTextPresence:
         assert result is True
         mock_dump.assert_not_called()
 
-    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
     def test_text_presence_failure_then_retry(self, mock_capture, mock_run, mock_dump):
         """Snippet IN pane on first check, then NOT on retry → success after retry."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -2057,8 +2061,8 @@ class TestVerifySubmissionTextPresence:
         ]
         assert len(enter_calls) == 1
 
-    @patch("claude_headspace.services.tmux_bridge._diagnostic_dump")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send._diagnostic_dump")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
     def test_short_text_fallback(self, mock_capture, mock_dump):
         """Short text (< 40 chars) uses _pane_content_changed logic."""
         # Content changes → success (content-change fallback)
@@ -2080,8 +2084,8 @@ class TestVerifySubmissionTextPresence:
 class TestPostTypingGhostText:
     """Tests for post-typing ghost text dismissal in send_text."""
 
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_post_typing_ghost_text_dismissed(self, mock_run, mock_capture):
         """Ghost text ANSI after typing triggers Escape before Enter."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -2109,9 +2113,9 @@ class TestPostTypingGhostText:
 class TestAdaptiveDelay:
     """Tests for adaptive delay scaling with text length."""
 
-    @patch("claude_headspace.services.tmux_bridge.time.sleep")
-    @patch("claude_headspace.services.tmux_bridge.capture_pane")
-    @patch("claude_headspace.services.tmux_bridge.subprocess.run")
+    @patch("claude_headspace.services.tmux_bridge.send.time.sleep")
+    @patch("claude_headspace.services.tmux_bridge.send.capture_pane")
+    @patch("claude_headspace.services.tmux_bridge.send.subprocess.run")
     def test_adaptive_delay_scales_with_length(
         self, mock_run, mock_capture, mock_sleep
     ):
