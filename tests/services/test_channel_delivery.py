@@ -1328,3 +1328,260 @@ class TestReconcilerChannelDrain:
 
             mock_relay.assert_called_once()
             mock_drain.assert_called_once_with(agent)
+
+
+# ── State Reconstruction tests ──────────────────────────────────────
+
+
+class TestStateReconstruction:
+    """Tests for _reconstruct_state(), _reconstruct_channel_prompted(), _reconstruct_queue()."""
+
+    def test_reconstruct_channel_prompted_basic(
+        self, app, delivery_service, db_session, setup_data
+    ):
+        """Agent prompted but has not responded is added to _channel_prompted."""
+        channel = setup_data["channel"]
+        agent_a = setup_data["agent_a"]
+        agent_b = setup_data["agent_b"]
+
+        # Agent A sends a message to the channel
+        msg = Message(
+            channel_id=channel.id,
+            persona_id=setup_data["persona_a"].id,
+            agent_id=agent_a.id,
+            content="Hello channel",
+            message_type=MessageType.MESSAGE,
+        )
+        db.session.add(msg)
+        db.session.commit()
+
+        # Simulate restart: create a fresh service instance
+        delivery_service._channel_prompted.clear()
+        delivery_service._queue.clear()
+        delivery_service._reconstruct_state()
+
+        # Agent B should be in _channel_prompted (received msg, hasn't responded)
+        assert agent_b.id in delivery_service._channel_prompted
+        # Agent A should NOT be in _channel_prompted (they sent the message)
+        assert agent_a.id not in delivery_service._channel_prompted
+
+    def test_reconstruct_skips_already_responded(
+        self, app, delivery_service, db_session, setup_data
+    ):
+        """Agent that already responded is NOT added to _channel_prompted."""
+        channel = setup_data["channel"]
+        agent_a = setup_data["agent_a"]
+        agent_b = setup_data["agent_b"]
+
+        # Agent A sends a message
+        msg1 = Message(
+            channel_id=channel.id,
+            persona_id=setup_data["persona_a"].id,
+            agent_id=agent_a.id,
+            content="Question for you",
+            message_type=MessageType.MESSAGE,
+        )
+        db.session.add(msg1)
+        db.session.flush()
+
+        # Agent B responds (more recent timestamp)
+        msg2 = Message(
+            channel_id=channel.id,
+            persona_id=setup_data["persona_b"].id,
+            agent_id=agent_b.id,
+            content="Here's my answer",
+            message_type=MessageType.MESSAGE,
+        )
+        db.session.add(msg2)
+        db.session.commit()
+
+        delivery_service._channel_prompted.clear()
+        delivery_service._reconstruct_state()
+
+        # Agent B already responded — should NOT be in _channel_prompted
+        assert agent_b.id not in delivery_service._channel_prompted
+
+    def test_reconstruct_respects_stale_cutoff(
+        self, app, delivery_service, db_session, setup_data
+    ):
+        """Messages older than cutoff threshold are ignored."""
+        from datetime import timedelta
+
+        channel = setup_data["channel"]
+        agent_a = setup_data["agent_a"]
+
+        # Create a message that's older than the cutoff (default 60 min)
+        old_time = datetime.now(timezone.utc) - timedelta(hours=2)
+        msg = Message(
+            channel_id=channel.id,
+            persona_id=setup_data["persona_a"].id,
+            agent_id=agent_a.id,
+            content="Old message",
+            message_type=MessageType.MESSAGE,
+            sent_at=old_time,
+        )
+        db.session.add(msg)
+        db.session.commit()
+
+        delivery_service._channel_prompted.clear()
+        delivery_service._reconstruct_state()
+
+        # No agents should be prompted (all messages are stale)
+        assert len(delivery_service._channel_prompted) == 0
+
+    def test_reconstruct_queue_unsafe_state(
+        self, app, delivery_service, db_session, setup_data
+    ):
+        """Agent in PROCESSING state gets undelivered messages re-queued."""
+        channel = setup_data["channel"]
+        agent_a = setup_data["agent_a"]
+        agent_b = setup_data["agent_b"]
+
+        # Put agent B in PROCESSING state (unsafe)
+        cmd = Command(
+            agent_id=agent_b.id,
+            state=CommandState.PROCESSING,
+            started_at=datetime.now(timezone.utc),
+        )
+        db.session.add(cmd)
+        db.session.flush()
+
+        # Agent A sends a message to the channel
+        msg = Message(
+            channel_id=channel.id,
+            persona_id=setup_data["persona_a"].id,
+            agent_id=agent_a.id,
+            content="Need your input",
+            message_type=MessageType.MESSAGE,
+        )
+        db.session.add(msg)
+        db.session.commit()
+
+        delivery_service._queue.clear()
+        delivery_service._channel_prompted.clear()
+        delivery_service._reconstruct_state()
+
+        # Agent B's queue should have the message
+        assert agent_b.id in delivery_service._queue
+        assert msg.id in delivery_service._queue[agent_b.id]
+
+    def test_reconstruct_skips_ended_agents(
+        self, app, delivery_service, db_session, setup_data
+    ):
+        """Ended agents are not reconstructed."""
+        channel = setup_data["channel"]
+        agent_a = setup_data["agent_a"]
+        agent_b = setup_data["agent_b"]
+
+        # End agent B
+        agent_b.ended_at = datetime.now(timezone.utc)
+        db.session.flush()
+
+        # Agent A sends a message
+        msg = Message(
+            channel_id=channel.id,
+            persona_id=setup_data["persona_a"].id,
+            agent_id=agent_a.id,
+            content="Hello",
+            message_type=MessageType.MESSAGE,
+        )
+        db.session.add(msg)
+        db.session.commit()
+
+        delivery_service._channel_prompted.clear()
+        delivery_service._reconstruct_state()
+
+        # Agent B (ended) should NOT be in _channel_prompted
+        assert agent_b.id not in delivery_service._channel_prompted
+
+    def test_reconstruct_skips_inactive_memberships(
+        self, app, delivery_service, db_session, setup_data
+    ):
+        """Inactive memberships are not reconstructed."""
+        channel = setup_data["channel"]
+        agent_a = setup_data["agent_a"]
+        agent_b = setup_data["agent_b"]
+        mem_b = setup_data["mem_b"]
+
+        # Deactivate agent B's membership
+        mem_b.status = "left"
+        db.session.flush()
+
+        # Agent A sends a message
+        msg = Message(
+            channel_id=channel.id,
+            persona_id=setup_data["persona_a"].id,
+            agent_id=agent_a.id,
+            content="Hello",
+            message_type=MessageType.MESSAGE,
+        )
+        db.session.add(msg)
+        db.session.commit()
+
+        delivery_service._channel_prompted.clear()
+        delivery_service._reconstruct_state()
+
+        # Agent B (inactive membership) should NOT be in _channel_prompted
+        assert agent_b.id not in delivery_service._channel_prompted
+
+    def test_reconstruct_idempotent(
+        self, app, delivery_service, db_session, setup_data
+    ):
+        """Calling _reconstruct_state() twice produces identical results."""
+        channel = setup_data["channel"]
+        agent_a = setup_data["agent_a"]
+
+        # Agent A sends a message
+        msg = Message(
+            channel_id=channel.id,
+            persona_id=setup_data["persona_a"].id,
+            agent_id=agent_a.id,
+            content="Hello",
+            message_type=MessageType.MESSAGE,
+        )
+        db.session.add(msg)
+        db.session.commit()
+
+        # First reconstruction
+        delivery_service._reconstruct_state()
+        prompted_first = set(delivery_service._channel_prompted)
+        queue_first = {
+            k: list(v) for k, v in delivery_service._queue.items()
+        }
+
+        # Second reconstruction — should produce identical results
+        delivery_service._reconstruct_state()
+        prompted_second = set(delivery_service._channel_prompted)
+        queue_second = {
+            k: list(v) for k, v in delivery_service._queue.items()
+        }
+
+        assert prompted_first == prompted_second
+        assert queue_first == queue_second
+
+    def test_reconstruct_error_isolation(
+        self, app, delivery_service, db_session, setup_data
+    ):
+        """DB error during reconstruction doesn't break the service.
+
+        The __init__ wraps _reconstruct_state() in try/except so that
+        the service still initialises even if reconstruction fails.
+        """
+        # Patch _reconstruct_state to raise, then create a new service
+        with patch.object(
+            ChannelDeliveryService,
+            "_reconstruct_state",
+            side_effect=RuntimeError("Simulated DB failure"),
+        ):
+            # Creating a new instance should NOT raise
+            svc = ChannelDeliveryService(app)
+
+        # Service should be fully functional despite failed reconstruction
+        assert svc._channel_prompted is not None
+        assert svc._queue is not None
+        assert len(svc._channel_prompted) == 0
+        assert len(svc._queue) == 0
+
+        # Service can still enqueue/dequeue normally
+        svc._enqueue(999, 111)
+        assert svc._dequeue(999) == 111

@@ -7,7 +7,7 @@ import tempfile
 import threading
 import time
 
-from .read import _has_autocomplete_ghost, capture_pane
+from .read import _diagnostic_dump, _has_autocomplete_ghost, capture_pane
 from .types import (
     DEFAULT_CLEAR_DELAY_MS,
     DEFAULT_ENTER_VERIFY_DELAY_MS,
@@ -22,7 +22,6 @@ from .types import (
     _classify_subprocess_error,
     _validate_pane_id,
 )
-from .read import _diagnostic_dump
 
 logger = logging.getLogger(__name__)
 
