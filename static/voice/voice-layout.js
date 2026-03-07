@@ -62,12 +62,9 @@ window.VoiceLayout = (function () {
     var headerSlot = document.getElementById('header-agent-slot');
     if (!headerInfo || !headerSlot) return;
     if (VoiceState.layoutMode === 'stacked') {
-      // Insert right after the hero badge so pill sits next to "Al" on the agent row
-      var hero = document.getElementById('chat-hero');
+      // Append pill to end of chat-focus-link; flex-wrap drops it to its own row
       var focusLink = document.getElementById('chat-focus-link');
-      if (hero && focusLink && pill.parentElement !== focusLink) {
-        hero.insertAdjacentElement('afterend', pill);
-      }
+      if (focusLink && pill.parentElement !== focusLink) focusLink.appendChild(pill);
     } else {
       // Restore to header-slot, before the kebab button
       var kebab = document.getElementById('agent-chat-kebab-btn');
